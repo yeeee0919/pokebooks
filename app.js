@@ -2949,7 +2949,14 @@ function getQty(productId, scope = 'all') {
 }
 
 /** Weighted Average Cost per unit for a product up to (and including) date */
+// WACC cache — cleared before each render pass
+let _waccCache = new Map();
+function clearWaccCache() { _waccCache = new Map(); }
+
 function getWACC(productId, asOfDate, scope = 'all') {
+  const cacheKey = `${productId}|${asOfDate}|${scope}`;
+  if (_waccCache.has(cacheKey)) return _waccCache.get(cacheKey);
+
   let totalCost = 0, totalQty = 0;
   const txns = DB.transactions
     .filter(t => t.date <= asOfDate && (scope === 'all' || (t.scope || 'biz') === scope))
@@ -2967,7 +2974,9 @@ function getWACC(productId, asOfDate, scope = 'all') {
       totalQty  += t.quantity;
     }
   }
-  return totalQty > 0 ? totalCost / totalQty : 0;
+  const result = totalQty > 0 ? totalCost / totalQty : 0;
+  _waccCache.set(cacheKey, result);
+  return result;
 }
 
 /** Total inventory cost for a product */
@@ -3171,7 +3180,11 @@ function calculateProductMetrics(productId, scopeF = 'all') {
   // 已實現利潤 = 銷售總收入 - 銷售總COGS - 銷售手續費
   const totalRev = sellTxns.reduce((s,t) => s + t.quantity * (t.pricePerUnitEUR||0), 0);
   const totalFees = sellTxns.reduce((s,t) => s + (t.fee||0), 0);
-  const totalCogs = sellTxns.reduce((s,t) => s + (t.cogsPerUnit != null ? t.cogsPerUnit * t.quantity : computeCogs(t.productId, t.date, t.quantity, scopeF)), 0);
+  // Use stored cogsPerUnit when available to avoid redundant getWACC calls
+  const totalCogs = sellTxns.reduce((s,t) => {
+    if (t.cogsPerUnit != null) return s + t.cogsPerUnit * t.quantity;
+    return s + getWACC(t.productId, t.date, scopeF) * t.quantity;
+  }, 0);
   const realizedProfit = totalRev - totalCogs - totalFees;
 
   // 回本進度: Net Invested = Total Cost of ALL Buys - Total Revenue from Sells
@@ -3205,6 +3218,7 @@ function calculateProductMetrics(productId, scopeF = 'all') {
 let _invTypeFilters = { biz: '', priv: '' };
 
 function renderInventoryPage(scopeF = 'biz') {
+  clearWaccCache(); // flush WACC cache before each render
   const search  = (q(`invSearch-${scopeF}`)?.value || '').toLowerCase();
   const langF   = q(`invLangFilter-${scopeF}`)?.value || '';
   const statusF = q(`invStatusFilter-${scopeF}`)?.value || 'all';
