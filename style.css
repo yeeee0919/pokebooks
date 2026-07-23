@@ -535,6 +535,26 @@ input, select { font-family: var(--font); }
 .scope-btn.active[data-scope="priv"] { background: rgba(100,116,139,.12); border-color: var(--t2); color: var(--t1); }
 .scope-btn.active[data-scope="both"] { background: rgba(217,119,6,.12); border-color: var(--gold); color: var(--gold); }
 
+/* ─── TRANSACTION SPLIT LAYOUT ─── */
+.tx-split-container {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start;
+}
+@media (max-width: 1024px) {
+  .tx-split-container { grid-template-columns: 1fr; }
+}
+.tx-split-col {
+  background: var(--s1); border: 1px solid var(--b1);
+  border-radius: var(--r2); overflow: hidden; display: flex; flex-direction: column;
+}
+.tx-split-hd {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: .65rem .9rem; font-weight: 700; font-size: .82rem;
+  border-bottom: 1px solid var(--b1);
+}
+.tx-split-hd.priv-hd { background: rgba(100,116,139,.08); color: var(--t1); border-top: 3px solid var(--t3); }
+.tx-split-hd.biz-hd  { background: rgba(37,99,235,.08);   color: var(--blue); border-top: 3px solid var(--blue); }
+.tx-split-meta { font-size: .72rem; font-weight: 500; color: var(--t2); font-family: var(--mono); }
+
 /* ─── DETAIL PANEL ─── */
 .detail-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,.55);

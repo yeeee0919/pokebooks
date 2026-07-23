@@ -1047,68 +1047,71 @@ function renderTransactions() {
   _selectedTxIds.clear();
   updateBulkButtons();
 
-  const scopeF = q('txScopeFilter')?.value||'biz';
-  const yr     = q('txYearFilter')?.value||String(fiscalYear());
-  const type   = q('txTypeFilter')?.value||'';
+  const yr   = q('txYearFilter')?.value||String(fiscalYear());
+  const type = q('txTypeFilter')?.value||'';
 
-  let txns = [...DB.transactions];
-  if (scopeF !== 'all') txns = txns.filter(t => (t.scope||'biz') === scopeF);
-  if (yr !== 'all') txns = txns.filter(t=>inYear(t.date, yr));
-  if (type) txns = txns.filter(t=>t.type===type);
-  txns.sort((a,b)=>b.date.localeCompare(a.date));
+  let allTxns = [...DB.transactions];
+  if (yr !== 'all') allTxns = allTxns.filter(t=>inYear(t.date, yr));
+  if (type) allTxns = allTxns.filter(t=>t.type===type);
+  allTxns.sort((a,b)=>b.date.localeCompare(a.date));
 
-  const rev  = txns.filter(t=>t.type==='SELL').reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
+  renderTxTableForScope('priv', allTxns.filter(t => (t.scope||'biz') === 'priv'));
+  renderTxTableForScope('biz',  allTxns.filter(t => (t.scope||'biz') === 'biz'));
+}
+
+function renderTxTableForScope(scopeKey, txns) {
+  const rev     = txns.filter(t=>t.type==='SELL').reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
   const buyCost = txns.filter(t=>t.type==='BUY').reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
-  const scopeTxt = scopeF==='biz'?'🏢 商業交易 (報稅)':scopeF==='priv'?'👤 私人交易 (個人)':'🏢＋👤 全部交易';
-  q('txSummary').innerHTML = `[${scopeTxt}] <strong>${txns.length}</strong> 筆記錄 · 銷售額 <strong>${eur(rev)}</strong> · 進貨成本 <strong>${eur(buyCost)}</strong>`;
+  
+  const sumEl = q(`txSummary-${scopeKey}`);
+  if (sumEl) sumEl.innerHTML = `<strong>${txns.length}</strong> 筆 · 銷 <strong>${eur(rev)}</strong> · 進 <strong>${eur(buyCost)}</strong>`;
+
+  const container = q(`txList-${scopeKey}`);
+  if (!container) return;
 
   if (!txns.length) {
-    q('txList').innerHTML = `<div class="empty"><div class="empty-ico">↕️</div><div class="empty-ttl">沒有符合條件的交易</div></div>`;
+    container.innerHTML = `<div class="empty" style="padding:1.5rem"><div class="empty-ttl" style="font-size:.8rem">無交易紀錄</div></div>`;
     return;
   }
 
-  q('txList').innerHTML = `<div class="tx-wrap"><table class="tx-table">
+  container.innerHTML = `<div class="tx-wrap"><table class="tx-table" style="font-size:.73rem">
     <thead><tr>
-      <th style="width:36px;text-align:center"><input type="checkbox" id="chkSelectAllTx" title="全選"/></th>
+      <th style="width:28px;text-align:center"><input type="checkbox" class="chk-select-all-scope" data-scope="${scopeKey}" title="全選"/></th>
       <th>日期</th><th>類型</th><th>商品</th>
-      <th>數量</th><th>單價</th><th>金額</th><th>手續費</th><th>COGS</th><th>毛利</th><th>平台</th><th>備註</th><th>操作</th>
+      <th>數量</th><th>金額</th><th>COGS</th><th>毛利</th><th>操作</th>
     </tr></thead>
     <tbody>${txns.map(t=>{
       const p    = DB.products.find(x=>x.id===t.productId);
       const name = p?.name||'已刪除';
       const tot  = t.quantity*(t.pricePerUnitEUR||0);
       const isSell = t.type==='SELL';
-      const cogs = isSell ? (t.cogsPerUnit!=null ? t.cogsPerUnit*t.quantity : computeCogs(t.productId,t.date,t.quantity)) : null;
+      const cogs = isSell ? (t.cogsPerUnit!=null ? t.cogsPerUnit*t.quantity : computeCogs(t.productId,t.date,t.quantity, scopeKey)) : null;
       const fee  = isSell ? (t.fee||0) : null;
       const gp   = isSell ? tot - (cogs||0) - (fee||0) : null;
       const gpCls= gp!=null ? (gp>=0?'sell':'buy') : '';
       return `<tr>
         <td style="text-align:center"><input type="checkbox" class="chk-tx" data-id="${t.id}"/></td>
-        <td class="mono">${t.date}</td>
-        <td>${txBadge(t.type)} ${(t.scope||'biz')==='priv'?'<span class="tx-badge" style="background:rgba(100,116,139,.15);color:var(--t2)">👤 私人</span>':'<span class="tx-badge" style="background:rgba(37,99,235,.15);color:var(--blue)">🏢 商業</span>'}</td>
-        <td style="font-weight:600;color:var(--t1)">${esc(name)}</td>
+        <td class="mono">${t.date.slice(5)}</td>
+        <td>${txBadge(t.type)}</td>
+        <td style="font-weight:600;color:var(--t1);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(name)}">${esc(name)}</td>
         <td class="mono">${t.quantity}</td>
-        <td class="mono">${eur(t.pricePerUnitEUR||0)}</td>
         <td class="amount ${isSell?'sell':'buy'}">${isSell?'':'-'}${eur(tot)}</td>
-        <td class="mono" style="color:var(--t3)">${fee!=null?eur(fee):'—'}</td>
         <td class="mono" style="color:var(--t3)">${cogs!=null?eur(cogs):'—'}</td>
         <td class="amount ${gpCls}">${gp!=null?eur(gp):'—'}</td>
-        <td>${esc(t.platform||'—')}</td>
-        <td style="font-size:.7rem;color:var(--t3)">${esc(t.note||'')}</td>
         <td>
-          <button class="link-btn btn-edit-tx" data-id="${t.id}" style="margin-right:.4rem">編輯</button>
-          <button class="link-btn btn-del-tx" data-id="${t.id}" style="color:var(--red)">刪除</button>
+          <button class="link-btn btn-edit-tx" data-id="${t.id}" style="margin-right:.3rem">✏️</button>
+          <button class="link-btn btn-del-tx" data-id="${t.id}" style="color:var(--red)">🗑️</button>
         </td>
       </tr>`;
     }).join('')}</tbody>
   </table></div>`;
 
-  // Select all checkbox
-  const chkAll = q('chkSelectAllTx');
+  // Select all checkbox for scope
+  const chkAll = container.querySelector('.chk-select-all-scope');
   if (chkAll) {
     chkAll.addEventListener('change', ()=>{
       const isChecked = chkAll.checked;
-      q('txList').querySelectorAll('.chk-tx').forEach(chk => {
+      container.querySelectorAll('.chk-tx').forEach(chk => {
         chk.checked = isChecked;
         if (isChecked) _selectedTxIds.add(chk.dataset.id);
         else _selectedTxIds.delete(chk.dataset.id);
@@ -1118,19 +1121,19 @@ function renderTransactions() {
   }
 
   // Item checkboxes
-  q('txList').querySelectorAll('.chk-tx').forEach(chk => {
+  container.querySelectorAll('.chk-tx').forEach(chk => {
     chk.addEventListener('change', ()=>{
       if (chk.checked) _selectedTxIds.add(chk.dataset.id);
       else _selectedTxIds.delete(chk.dataset.id);
-      if (chkAll) chkAll.checked = q('txList').querySelectorAll('.chk-tx:not(:checked)').length === 0;
+      if (chkAll) chkAll.checked = container.querySelectorAll('.chk-tx:not(:checked)').length === 0;
       updateBulkButtons();
     });
   });
 
-  q('txList').querySelectorAll('.btn-edit-tx').forEach(btn=>{
+  container.querySelectorAll('.btn-edit-tx').forEach(btn=>{
     btn.addEventListener('click', ()=>editTransaction(btn.dataset.id));
   });
-  q('txList').querySelectorAll('.btn-del-tx').forEach(btn=>{
+  container.querySelectorAll('.btn-del-tx').forEach(btn=>{
     btn.addEventListener('click', ()=>deleteTransaction(btn.dataset.id));
   });
 }

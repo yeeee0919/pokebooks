@@ -164,7 +164,6 @@
       <div class="view" id="view-transactions">
         <div class="toolbar">
           <div class="tl">
-            <select class="sel" id="txScopeFilter"><option value="all">🏢＋👤 全部帳戶</option><option value="biz" selected>🏢 商業交易 (計入KOR/報稅)</option><option value="priv">👤 私人交易 (不報稅)</option></select>
             <select class="sel" id="txYearFilter"><option value="2026">2026</option><option value="2025">2025</option><option value="all">全部年份</option></select>
             <select class="sel" id="txTypeFilter"><option value="">全部類型</option><option value="BUY">進貨 BUY</option><option value="SELL">銷售 SELL</option><option value="GRADE">送評 GRADE</option></select>
           </div>
@@ -175,8 +174,26 @@
             <button class="btn-secondary" id="btnAddBuy">＋ 記錄進貨</button>
           </div>
         </div>
-        <div class="summary-strip" id="txSummary"></div>
-        <div id="txList"></div>
+        
+        <div class="tx-split-container">
+          <!-- Left Column: Private -->
+          <div class="tx-split-col">
+            <div class="tx-split-hd priv-hd">
+              <span>👤 私人交易 (不報稅)</span>
+              <span class="tx-split-meta" id="txSummary-priv">0 筆</span>
+            </div>
+            <div id="txList-priv"></div>
+          </div>
+          
+          <!-- Right Column: Business -->
+          <div class="tx-split-col">
+            <div class="tx-split-hd biz-hd">
+              <span>🏢 商業交易 (報稅/KOR)</span>
+              <span class="tx-split-meta" id="txSummary-biz">0 筆</span>
+            </div>
+            <div id="txList-biz"></div>
+          </div>
+        </div>
       </div>
 
       <!-- ── EXPENSES ── -->
