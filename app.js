@@ -1395,6 +1395,8 @@ q('btnSaveBuy').addEventListener('click', ()=>{
   if (isNaN(cost)||cost<0) return toast('請輸入成本','e');
   if (!date) return toast('請選擇日期','e');
 
+  const scopeVal = q('buyScope').value || 'biz';
+
   if (editId) {
     const idx = DB.transactions.findIndex(t=>t.id===editId);
     if (idx>=0) {
@@ -1406,23 +1408,51 @@ q('btnSaveBuy').addEventListener('click', ()=>{
         pricePerUnitEUR: cost,
         platform: q('buySource').value||'',
         currency: q('buyCurrency').value,
-        scope: q('buyScope').value||'biz',
+        scope: scopeVal === 'both' ? 'biz' : scopeVal,
         note: q('buyNote').value.trim(),
       };
     }
   } else {
-    DB.transactions.push({
-      id:             uid(),
-      productId,
-      type:           'BUY',
-      date,
-      quantity:       qty,
-      pricePerUnitEUR:cost,
-      platform:       q('buySource').value||'',
-      currency:       q('buyCurrency').value,
-      scope:          q('buyScope').value||'biz',
-      note:           q('buyNote').value.trim(),
-    });
+    if (scopeVal === 'both') {
+      // Split or create buy records for BOTH business and private
+      DB.transactions.push({
+        id:             uid(),
+        productId,
+        type:           'BUY',
+        date,
+        quantity:       qty,
+        pricePerUnitEUR:cost,
+        platform:       q('buySource').value||'',
+        currency:       q('buyCurrency').value,
+        scope:          'biz',
+        note:           (q('buyNote').value.trim() + ' (商業＋私人同時進貨)').trim(),
+      });
+      DB.transactions.push({
+        id:             uid(),
+        productId,
+        type:           'BUY',
+        date,
+        quantity:       qty,
+        pricePerUnitEUR:cost,
+        platform:       q('buySource').value||'',
+        currency:       q('buyCurrency').value,
+        scope:          'priv',
+        note:           (q('buyNote').value.trim() + ' (商業＋私人同時進貨)').trim(),
+      });
+    } else {
+      DB.transactions.push({
+        id:             uid(),
+        productId,
+        type:           'BUY',
+        date,
+        quantity:       qty,
+        pricePerUnitEUR:cost,
+        platform:       q('buySource').value||'',
+        currency:       q('buyCurrency').value,
+        scope:          scopeVal,
+        note:           q('buyNote').value.trim(),
+      });
+    }
   }
 
   save(); closeModal('mBuy');
