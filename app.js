@@ -3661,7 +3661,7 @@ function renderTransactions() {
 function renderTxTableForScope(scopeKey, txns) {
   const rev     = txns.filter(t=>t.type==='SELL').reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
   const buyCost = txns.filter(t=>t.type==='BUY').reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
-  
+
   const sumEl = q(`txSummary-${scopeKey}`);
   if (sumEl) sumEl.innerHTML = `<strong>${txns.length}</strong> 筆 · 銷 <strong>${eur(rev)}</strong> · 進 <strong>${eur(buyCost)}</strong>`;
 
@@ -3783,11 +3783,12 @@ function renderExpenses() {
 // ══════════════════════════════════════════════════════════════
 function renderReports() {
   const yr = Number(q('rptYear')?.value||fiscalYear());
-  const ySells = DB.transactions.filter(t=>t.type==='SELL'&&inYear(t.date,yr));
-  const yExp   = DB.expenses.filter(e=>inYear(e.date,yr)&&!e.isPrivate);
+  // Business (commercial) only — private transactions excluded from P&L
+  const ySells = DB.transactions.filter(t => t.type==='SELL' && inYear(t.date,yr) && (t.scope||'biz')==='biz');
+  const yExp   = DB.expenses.filter(e => inYear(e.date,yr) && !e.isPrivate);
 
   const rev    = ySells.reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
-  const cogs   = ySells.reduce((s,t)=>s+(t.cogsPerUnit!=null?t.cogsPerUnit*t.quantity:computeCogs(t.productId,t.date,t.quantity)),0);
+  const cogs   = ySells.reduce((s,t)=>s+(t.cogsPerUnit!=null?t.cogsPerUnit*t.quantity:computeCogs(t.productId,t.date,t.quantity,'biz')),0);
   const fees   = ySells.reduce((s,t)=>s+(t.fee||0),0);
   const grossP = rev - cogs - fees;
 
@@ -3802,14 +3803,16 @@ function renderReports() {
   const aft3   = aft2*(1-MKB);
   const taxEst = aft3*0.3697;
 
-  const invCost = DB.products.reduce((s,p)=>s+getInventoryCost(p.id),0);
-  const invQty  = DB.products.reduce((s,p)=>s+getQty(p.id),0);
+  // Commercial inventory only
+  const invCost     = DB.products.reduce((s,p)=>s+getInventoryCost(p.id,'biz'),0);
+  const invQty      = DB.products.reduce((s,p)=>s+getQty(p.id,'biz'),0);
+  const inStockCount= DB.products.filter(p=>getQty(p.id,'biz')>0).length;
 
   q('rptContent').innerHTML = `
   <div class="panel rpt-section">
-    <div class="rpt-title">📊 損益表 Winst- en Verliesrekening · ${yr}</div>
+    <div class="rpt-title">📊 損益表 Winst- en Verliesrekening · ${yr} <span style="font-size:.78rem;font-weight:normal;color:var(--t2)">(🏢 商業帳戶專用)</span></div>
     <div class="pl-row subtotal"><span>📈 營業額（Omzet）</span><span class="pl-val">${eur(rev)}</span></div>
-    <div class="pl-row indent"><span>銷售筆數：${ySells.length} 筆</span></div>
+    <div class="pl-row indent"><span>商業銷售筆數：${ySells.length} 筆</span></div>
     <div class="pl-row indent"><span>— 售出成本（COGS，加權平均）</span><span class="pl-val neg">-${eur(cogs)}</span></div>
     <div class="pl-row indent"><span>— 平台手續費</span><span class="pl-val neg">-${eur(fees)}</span></div>
     <div class="pl-row subtotal" style="margin-top:.25rem"><span>💰 毛利（Brutowinst）</span><span class="pl-val ${grossP>=0?'pos':'neg'}">${eur(grossP)}</span></div>
@@ -3831,9 +3834,9 @@ function renderReports() {
   </div>
 
   <div class="panel rpt-section">
-    <div class="rpt-title">📦 期末庫存（Eindbalans 片段）</div>
-    <div class="pl-row"><span>庫存資產（Voorraad，加權平均成本法）</span><span class="pl-val">${eur(invCost)}</span></div>
-    <div class="pl-row"><span>在庫商品種數 / 總張數</span><span class="pl-val">${DB.products.filter(p=>getQty(p.id)>0).length} 種 / ${invQty} 張</span></div>
+    <div class="rpt-title">📦 商業期末庫存（Eindbalans 片段）</div>
+    <div class="pl-row"><span>商業庫存資產（Voorraad，加權平均成本法）</span><span class="pl-val">${eur(invCost)}</span></div>
+    <div class="pl-row"><span>商業在庫：${inStockCount} 種 / ${invQty} 張</span></div>
   </div>`;
 }
 
