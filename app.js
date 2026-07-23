@@ -2703,7 +2703,7 @@ function renderTransactions() {
   q('txList').innerHTML = `<div class="tx-wrap"><table class="tx-table">
     <thead><tr>
       <th>日期</th><th>類型</th><th>商品</th>
-      <th>數量</th><th>單價</th><th>金額</th><th>手續費</th><th>COGS</th><th>毛利</th><th>平台</th><th>備註</th>
+      <th>數量</th><th>單價</th><th>金額</th><th>手續費</th><th>COGS</th><th>毛利</th><th>平台</th><th>備註</th><th>操作</th>
     </tr></thead>
     <tbody>${txns.map(t=>{
       const p    = DB.products.find(x=>x.id===t.productId);
@@ -2726,9 +2726,20 @@ function renderTransactions() {
         <td class="amount ${gpCls}">${gp!=null?eur(gp):'—'}</td>
         <td>${esc(t.platform||'—')}</td>
         <td style="font-size:.7rem;color:var(--t3)">${esc(t.note||'')}</td>
+        <td>
+          <button class="link-btn btn-edit-tx" data-id="${t.id}" style="margin-right:.4rem">編輯</button>
+          <button class="link-btn btn-del-tx" data-id="${t.id}" style="color:var(--red)">刪除</button>
+        </td>
       </tr>`;
     }).join('')}</tbody>
   </table></div>`;
+
+  q('txList').querySelectorAll('.btn-edit-tx').forEach(btn=>{
+    btn.addEventListener('click', ()=>editTransaction(btn.dataset.id));
+  });
+  q('txList').querySelectorAll('.btn-del-tx').forEach(btn=>{
+    btn.addEventListener('click', ()=>deleteTransaction(btn.dataset.id));
+  });
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -2981,6 +2992,7 @@ function updateBuyHint() {
 }
 
 q('btnSaveBuy').addEventListener('click', ()=>{
+  const editId = q('buyEditId').value;
   const productId = q('buyProductId').value;
   const qty  = parseInt(q('buyQty').value);
   const cost = parseFloat(q('buyCost').value);
@@ -2990,43 +3002,65 @@ q('btnSaveBuy').addEventListener('click', ()=>{
   if (isNaN(cost)||cost<0) return toast('請輸入成本','e');
   if (!date) return toast('請選擇日期','e');
 
-  DB.transactions.push({
-    id:             uid(),
-    productId,
-    type:           'BUY',
-    date,
-    quantity:       qty,
-    pricePerUnitEUR:cost,
-    platform:       q('buySource').value||'',
-    currency:       q('buyCurrency').value,
-    note:           q('buyNote').value.trim(),
-  });
+  if (editId) {
+    const idx = DB.transactions.findIndex(t=>t.id===editId);
+    if (idx>=0) {
+      DB.transactions[idx] = {
+        ...DB.transactions[idx],
+        productId,
+        date,
+        quantity: qty,
+        pricePerUnitEUR: cost,
+        platform: q('buySource').value||'',
+        currency: q('buyCurrency').value,
+        note: q('buyNote').value.trim(),
+      };
+    }
+  } else {
+    DB.transactions.push({
+      id:             uid(),
+      productId,
+      type:           'BUY',
+      date,
+      quantity:       qty,
+      pricePerUnitEUR:cost,
+      platform:       q('buySource').value||'',
+      currency:       q('buyCurrency').value,
+      note:           q('buyNote').value.trim(),
+    });
+  }
 
   save(); closeModal('mBuy');
   refreshCurrentView();
-  toast(`進貨 × ${qty} 張已記錄`, 's');
+  toast(editId ? '進貨紀錄已更新' : `進貨 × ${qty} 張已記錄`, 's');
 });
 
 // ══════════════════════════════════════════════════════════════
 //  MODAL — RECORD SELL
 // ══════════════════════════════════════════════════════════════
-function openModalSell(presetProductId=null) {
+function openModalSell(presetProductId=null, editTxId=null) {
+  const editTx = editTxId ? DB.transactions.find(t=>t.id===editTxId) : null;
+  q('sellEditId').value = editTxId||'';
+
   const sel = q('sellProductId');
-  const inStock = DB.products.filter(p=>getQty(p.id)>0);
+  const inStock = DB.products.filter(p=>getQty(p.id)>0 || (editTx && p.id===editTx.productId));
+  const targetPid = editTx ? editTx.productId : presetProductId;
+
   sel.innerHTML = '<option value="">— 選擇商品 —</option>' +
-    inStock.map(p=>`<option value="${p.id}"${p.id===presetProductId?' selected':''}>${esc(p.name)} (在庫 ${getQty(p.id)} 張)</option>`).join('');
-  q('sellQty').value    = '1';
-  q('sellPrice').value  = '';
-  q('sellDate').value   = today();
-  q('sellPlatform').value='CM';
-  q('sellFee').value    = '';
+    inStock.map(p=>`<option value="${p.id}"${p.id===targetPid?' selected':''}>${esc(p.name)} (${p.type})</option>`).join('');
+
+  q('sellQty').value    = editTx ? editTx.quantity : '1';
+  q('sellPrice').value  = editTx ? editTx.pricePerUnitEUR : '';
+  q('sellDate').value   = editTx ? editTx.date : today();
+  q('sellPlatform').value= editTx ? (editTx.platform||'CM') : 'CM';
+  q('sellFee').value    = editTx ? (editTx.fee||'') : '';
   q('sellCountry').value= 'NL';
-  q('sellNote').value   = '';
+  q('sellNote').value   = editTx ? (editTx.note||'') : '';
   q('ossAlert').style.display='none';
   q('sellCostPreview').style.display='none';
   q('sellKorCheck').textContent='';
   updateProfitPreview();
-  if (presetProductId) updateSellCostPreview();
+  if (targetPid) updateSellCostPreview();
   openModal('mSell');
 }
 
@@ -3094,29 +3128,85 @@ q('btnSaveSell').addEventListener('click', async ()=>{
     if (!ok) return;
   }
 
+  const editId     = q('sellEditId').value;
   const fee        = parseFloat(q('sellFee').value)||0;
   const wacc       = getWACC(productId, date);
   const cogsPerUnit = wacc;
 
-  DB.transactions.push({
-    id:             uid(),
-    productId,
-    type:           'SELL',
-    date,
-    quantity:       qty,
-    pricePerUnitEUR:price,
-    fee,
-    cogsPerUnit,
-    platform:       q('sellPlatform').value||'',
-    note:           q('sellNote').value.trim(),
-  });
+  if (editId) {
+    const idx = DB.transactions.findIndex(t=>t.id===editId);
+    if (idx>=0) {
+      DB.transactions[idx] = {
+        ...DB.transactions[idx],
+        productId,
+        date,
+        quantity: qty,
+        pricePerUnitEUR: price,
+        fee,
+        cogsPerUnit,
+        platform: q('sellPlatform').value||'',
+        note: q('sellNote').value.trim(),
+      };
+    }
+  } else {
+    DB.transactions.push({
+      id:             uid(),
+      productId,
+      type:           'SELL',
+      date,
+      quantity:       qty,
+      pricePerUnitEUR:price,
+      fee,
+      cogsPerUnit,
+      platform:       q('sellPlatform').value||'',
+      note:           q('sellNote').value.trim(),
+    });
+  }
 
   save(); closeModal('mSell');
   updateKor();
   refreshCurrentView();
   const gp = price*qty - fee - cogsPerUnit*qty;
-  toast(`銷售 × ${qty} 已記錄，毛利 ${eur(gp)}`,'s');
+  toast(editId ? '銷售紀錄已更新' : `銷售 × ${qty} 已記錄，毛利 ${eur(gp)}`,'s');
 });
+
+// ── Transaction edit / delete helpers ─────────────────────────
+function editTransaction(txId) {
+  const tx = DB.transactions.find(t=>t.id===txId);
+  if (!tx) return;
+  if (tx.type==='BUY') {
+    q('buyEditId').value = tx.id;
+    const sel = q('buyProductId');
+    sel.innerHTML = '<option value="">— 選擇商品 —</option>' +
+      DB.products.map(p=>`<option value="${p.id}"${p.id===tx.productId?' selected':''}>${esc(p.name)} (${p.type})</option>`).join('');
+    q('buyQty').value    = tx.quantity;
+    q('buyCost').value   = tx.pricePerUnitEUR;
+    q('buyDate').value   = tx.date;
+    q('buySource').value = tx.platform||'';
+    q('buyCurrency').value = tx.currency||'EUR';
+    q('buyNote').value   = tx.note||'';
+    q('buyFxGroup').style.display = tx.currency&&tx.currency!=='EUR'?'flex':'none';
+    updateBuyHint();
+    openModal('mBuy');
+  } else if (tx.type==='SELL') {
+    openModalSell(null, tx.id);
+  } else {
+    toast('送評紀錄暫不支援編輯，可直接刪除後重新記錄', 'w');
+  }
+}
+
+function deleteTransaction(txId) {
+  const tx = DB.transactions.find(t=>t.id===txId);
+  if (!tx) return;
+  const p = DB.products.find(x=>x.id===tx.productId);
+  confirm2(`確認刪除 ${tx.date} ${p?.name||''} 的 ${txBadge(tx.type)} 紀錄？`, ()=>{
+    DB.transactions = DB.transactions.filter(t=>t.id!==txId);
+    save();
+    updateKor();
+    refreshCurrentView();
+    toast('交易紀錄已刪除', 's');
+  });
+}
 
 // ══════════════════════════════════════════════════════════════
 //  MODAL — RECORD GRADE
