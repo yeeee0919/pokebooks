@@ -355,12 +355,14 @@
         </div>
         <div class="fg" id="buyFxGroup" style="display:none"><label>匯率（→EUR/張）</label><input type="number" id="buyFx" class="finp" placeholder="0.0000" step="0.0001"/></div>
       </div>
-      <div class="fg"><label>帳戶歸屬 (計入報稅/個人) <span class="req">*</span></label>
-        <select id="buyScope" class="finp">
-          <option value="biz" selected>🏢 商業帳戶 (公司/報稅)</option>
-          <option value="priv">👤 私人帳戶 (個人收藏/不報稅)</option>
-          <option value="both">🏢＋👤 商業＋私人 (兩邊同時計入進貨)</option>
-        </select>
+      <div class="fg">
+        <label>帳戶歸屬 <span class="req">*</span></label>
+        <input type="hidden" id="buyScope" value="biz"/>
+        <div class="scope-btns" id="buyScopeBtns">
+          <button type="button" class="scope-btn active" data-scope="biz" data-target="buyScope">🏢 商業</button>
+          <button type="button" class="scope-btn" data-scope="priv" data-target="buyScope">👤 私人</button>
+          <button type="button" class="scope-btn" data-scope="both" data-target="buyScope">🏢＋👤 兩邊都要</button>
+        </div>
       </div>
       <div class="receipt-hint" id="buySourceHint"></div>
       <div class="fg"><label>備註</label><input type="text" id="buyNote" class="finp" placeholder="賣家、備註…"/></div>
@@ -375,15 +377,16 @@
     <div class="mhd"><h2>💰 記錄銷售</h2><button class="mclose" data-close="mSell">&times;</button></div>
     <div class="mbd">
       <input type="hidden" id="sellEditId"/>
-      <div class="frow">
-        <div class="fg flex2"><label>商品 <span class="req">*</span></label>
-          <select id="sellProductId" class="finp"><option value="">— 選擇商品 —</option></select>
-        </div>
-        <div class="fg"><label>帳戶歸屬 <span class="req">*</span></label>
-          <select id="sellScope" class="finp">
-            <option value="biz" selected>🏢 商業帳戶 (計入KOR/報稅)</option>
-            <option value="priv">👤 私人帳戶 (個人收藏/不報稅)</option>
-          </select>
+      <div class="fg"><label>商品 <span class="req">*</span></label>
+        <select id="sellProductId" class="finp"><option value="">— 選擇商品 —</option></select>
+      </div>
+      <div class="fg">
+        <label>帳戶歸屬 <span class="req">*</span></label>
+        <input type="hidden" id="sellScope" value="biz"/>
+        <div class="scope-btns" id="sellScopeBtns">
+          <button type="button" class="scope-btn active" data-scope="biz" data-target="sellScope">🏢 商業</button>
+          <button type="button" class="scope-btn" data-scope="priv" data-target="sellScope">👤 私人</button>
+          <button type="button" class="scope-btn" data-scope="both" data-target="sellScope">🏢＋👤 兩邊都要</button>
         </div>
       </div>
       <div class="cost-preview" id="sellCostPreview" style="display:none"></div>

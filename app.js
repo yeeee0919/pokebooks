@@ -1357,6 +1357,18 @@ q('btnSaveProduct').addEventListener('click', ()=>{
 // ══════════════════════════════════════════════════════════════
 //  MODAL — RECORD BUY
 // ══════════════════════════════════════════════════════════════
+function setScopeValue(targetId, val) {
+  const input = q(targetId);
+  if (!input) return;
+  input.value = val;
+  const container = input.parentElement?.querySelector('.scope-btns');
+  if (container) {
+    container.querySelectorAll('.scope-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.scope === val);
+    });
+  }
+}
+
 function openModalBuy(presetProductId=null) {
   const sel = q('buyProductId');
   sel.innerHTML = '<option value="">— 選擇商品 —</option>' +
@@ -1366,6 +1378,7 @@ function openModalBuy(presetProductId=null) {
   q('buyDate').value   = today();
   q('buySource').value = 'nl_inperson';
   q('buyCurrency').value='EUR';
+  setScopeValue('buyScope', 'biz');
   q('buyNote').value   = '';
   q('buyFxGroup').style.display='none';
   updateBuyHint();
@@ -1479,7 +1492,7 @@ function openModalSell(presetProductId=null, editTxId=null) {
   q('sellDate').value   = editTx ? editTx.date : today();
   q('sellPlatform').value= editTx ? (editTx.platform||'CM') : 'CM';
   q('sellFee').value    = editTx ? (editTx.fee||'') : '';
-  q('sellScope').value  = editTx ? (editTx.scope||'biz') : 'biz';
+  setScopeValue('sellScope', editTx ? (editTx.scope||'biz') : 'biz');
   q('sellCountry').value= 'NL';
   q('sellNote').value   = editTx ? (editTx.note||'') : '';
   q('ossAlert').style.display='none';
@@ -1555,13 +1568,13 @@ q('btnSaveSell').addEventListener('click', async ()=>{
   }
 
   const editId     = q('sellEditId').value;
-  const scope      = q('sellScope').value || 'biz';
+  const scopeVal   = q('sellScope').value || 'biz';
   const fee        = parseFloat(q('sellFee').value)||0;
-  const wacc       = getWACC(productId, date, scope);
-  const cogsPerUnit = wacc;
 
   if (editId) {
-    const idx = DB.transactions.findIndex(t=>t.id===editId);
+    const scope = scopeVal === 'both' ? 'biz' : scopeVal;
+    const wacc  = getWACC(productId, date, scope);
+    const idx   = DB.transactions.findIndex(t=>t.id===editId);
     if (idx>=0) {
       DB.transactions[idx] = {
         ...DB.transactions[idx],
@@ -1570,33 +1583,64 @@ q('btnSaveSell').addEventListener('click', async ()=>{
         quantity: qty,
         pricePerUnitEUR: price,
         fee,
-        cogsPerUnit,
+        cogsPerUnit: wacc,
         scope,
         platform: q('sellPlatform').value||'',
         note: q('sellNote').value.trim(),
       };
     }
   } else {
-    DB.transactions.push({
-      id:             uid(),
-      productId,
-      type:           'SELL',
-      date,
-      quantity:       qty,
-      pricePerUnitEUR:price,
-      fee,
-      cogsPerUnit,
-      scope,
-      platform:       q('sellPlatform').value||'',
-      note:           q('sellNote').value.trim(),
-    });
+    if (scopeVal === 'both') {
+      const waccBiz  = getWACC(productId, date, 'biz');
+      const waccPriv = getWACC(productId, date, 'priv');
+      DB.transactions.push({
+        id:             uid(),
+        productId,
+        type:           'SELL',
+        date,
+        quantity:       qty,
+        pricePerUnitEUR:price,
+        fee:            fee / 2,
+        cogsPerUnit:    waccBiz,
+        scope:          'biz',
+        platform:       q('sellPlatform').value||'',
+        note:           (q('sellNote').value.trim() + ' (商業＋私人同時銷售)').trim(),
+      });
+      DB.transactions.push({
+        id:             uid(),
+        productId,
+        type:           'SELL',
+        date,
+        quantity:       qty,
+        pricePerUnitEUR:price,
+        fee:            fee / 2,
+        cogsPerUnit:    waccPriv,
+        scope:          'priv',
+        platform:       q('sellPlatform').value||'',
+        note:           (q('sellNote').value.trim() + ' (商業＋私人同時銷售)').trim(),
+      });
+    } else {
+      const wacc = getWACC(productId, date, scopeVal);
+      DB.transactions.push({
+        id:             uid(),
+        productId,
+        type:           'SELL',
+        date,
+        quantity:       qty,
+        pricePerUnitEUR:price,
+        fee,
+        cogsPerUnit:    wacc,
+        scope:          scopeVal,
+        platform:       q('sellPlatform').value||'',
+        note:           q('sellNote').value.trim(),
+      });
+    }
   }
 
   save(); closeModal('mSell');
   updateKor();
   refreshCurrentView();
-  const gp = price*qty - fee - cogsPerUnit*qty;
-  toast(editId ? '銷售紀錄已更新' : `銷售 × ${qty} 已記錄，毛利 ${eur(gp)}`,'s');
+  toast(editId ? '銷售紀錄已更新' : `銷售 × ${qty} 已記錄`, 's');
 });
 
 // ── Transaction edit / delete helpers ─────────────────────────
@@ -1891,6 +1935,20 @@ function wireEvents() {
   // Nav
   document.querySelectorAll('.nav-link[data-tab]').forEach(l=>{
     l.addEventListener('click', ()=>switchTab(l.dataset.tab));
+  });
+
+  // Scope Button Groups toggle
+  document.querySelectorAll('.scope-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      const scope = btn.dataset.scope;
+      const targetId = btn.dataset.target;
+      setScopeValue(targetId, scope);
+      if (targetId === 'sellScope') {
+        updateProfitPreview();
+        updateKorCheck();
+      }
+    });
   });
 
   // Close detail

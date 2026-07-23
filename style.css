@@ -520,6 +520,21 @@ input, select { font-family: var(--font); }
 .radio-opt { display: flex; align-items: center; gap: .38rem; font-size: .78rem; color: var(--t2); cursor: pointer; }
 .radio-opt input { accent-color: var(--gold); }
 
+/* ─── SCOPE BUTTON GROUP ─── */
+.scope-btns {
+  display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .25rem;
+}
+.scope-btn {
+  padding: .42rem .9rem; font-size: .78rem; font-weight: 600;
+  border: 2px solid var(--b1); border-radius: var(--r1);
+  background: var(--s2); color: var(--t2);
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.scope-btn:hover { border-color: var(--gold); color: var(--t1); }
+.scope-btn.active[data-scope="biz"]  { background: rgba(37,99,235,.1);  border-color: var(--blue);  color: var(--blue);  }
+.scope-btn.active[data-scope="priv"] { background: rgba(100,116,139,.12); border-color: var(--t2); color: var(--t1); }
+.scope-btn.active[data-scope="both"] { background: rgba(217,119,6,.12); border-color: var(--gold); color: var(--gold); }
+
 /* ─── DETAIL PANEL ─── */
 .detail-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,.55);
