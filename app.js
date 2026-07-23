@@ -2682,7 +2682,22 @@ function closeDetail() {
 // ══════════════════════════════════════════════════════════════
 //  TRANSACTIONS
 // ══════════════════════════════════════════════════════════════
+let _selectedTxIds = new Set();
+
+function updateBulkButtons() {
+  const cnt = _selectedTxIds.size;
+  const btnEdit   = q('btnBulkEdit');
+  const btnDelete = q('btnBulkDelete');
+  const countEl   = q('bulkCount');
+  if (countEl) countEl.textContent = cnt;
+  if (btnEdit)   btnEdit.style.display   = cnt > 0 ? 'inline-flex' : 'none';
+  if (btnDelete) btnDelete.style.display = cnt > 0 ? 'inline-flex' : 'none';
+}
+
 function renderTransactions() {
+  _selectedTxIds.clear();
+  updateBulkButtons();
+
   const yr   = q('txYearFilter')?.value||String(fiscalYear());
   const type = q('txTypeFilter')?.value||'';
 
@@ -2702,6 +2717,7 @@ function renderTransactions() {
 
   q('txList').innerHTML = `<div class="tx-wrap"><table class="tx-table">
     <thead><tr>
+      <th style="width:36px;text-align:center"><input type="checkbox" id="chkSelectAllTx" title="全選"/></th>
       <th>日期</th><th>類型</th><th>商品</th>
       <th>數量</th><th>單價</th><th>金額</th><th>手續費</th><th>COGS</th><th>毛利</th><th>平台</th><th>備註</th><th>操作</th>
     </tr></thead>
@@ -2715,6 +2731,7 @@ function renderTransactions() {
       const gp   = isSell ? tot - (cogs||0) - (fee||0) : null;
       const gpCls= gp!=null ? (gp>=0?'sell':'buy') : '';
       return `<tr>
+        <td style="text-align:center"><input type="checkbox" class="chk-tx" data-id="${t.id}"/></td>
         <td class="mono">${t.date}</td>
         <td>${txBadge(t.type)}</td>
         <td style="font-weight:600;color:var(--t1)">${esc(name)}</td>
@@ -2733,6 +2750,30 @@ function renderTransactions() {
       </tr>`;
     }).join('')}</tbody>
   </table></div>`;
+
+  // Select all checkbox
+  const chkAll = q('chkSelectAllTx');
+  if (chkAll) {
+    chkAll.addEventListener('change', ()=>{
+      const isChecked = chkAll.checked;
+      q('txList').querySelectorAll('.chk-tx').forEach(chk => {
+        chk.checked = isChecked;
+        if (isChecked) _selectedTxIds.add(chk.dataset.id);
+        else _selectedTxIds.delete(chk.dataset.id);
+      });
+      updateBulkButtons();
+    });
+  }
+
+  // Item checkboxes
+  q('txList').querySelectorAll('.chk-tx').forEach(chk => {
+    chk.addEventListener('change', ()=>{
+      if (chk.checked) _selectedTxIds.add(chk.dataset.id);
+      else _selectedTxIds.delete(chk.dataset.id);
+      if (chkAll) chkAll.checked = q('txList').querySelectorAll('.chk-tx:not(:checked)').length === 0;
+      updateBulkButtons();
+    });
+  });
 
   q('txList').querySelectorAll('.btn-edit-tx').forEach(btn=>{
     btn.addEventListener('click', ()=>editTransaction(btn.dataset.id));
@@ -3208,6 +3249,76 @@ function deleteTransaction(txId) {
   });
 }
 
+// ── Bulk Edit & Bulk Delete Handlers ─────────────────────────
+function openBulkEditModal() {
+  if (_selectedTxIds.size === 0) return toast('請先勾選欲編輯的交易', 'w');
+  q('mBulkEditCount').textContent = _selectedTxIds.size;
+  q('chkBulkDate').checked = false;
+  q('chkBulkPlatform').checked = false;
+  q('chkBulkPrice').checked = false;
+  q('chkBulkFee').checked = false;
+  q('chkBulkNote').checked = false;
+
+  q('bulkInpDate').value = today();
+  q('bulkInpPlatform').value = '';
+  q('bulkInpPrice').value = '';
+  q('bulkInpFee').value = '';
+  q('bulkInpNote').value = '';
+  openModal('mBulkEdit');
+}
+
+function applyBulkEdit() {
+  const changeDate     = q('chkBulkDate').checked;
+  const changePlatform = q('chkBulkPlatform').checked;
+  const changePrice    = q('chkBulkPrice').checked;
+  const changeFee      = q('chkBulkFee').checked;
+  const changeNote     = q('chkBulkNote').checked;
+
+  if (!changeDate && !changePlatform && !changePrice && !changeFee && !changeNote) {
+    return toast('請至少勾選一個欲修改的欄位', 'w');
+  }
+
+  const newDate     = q('bulkInpDate').value;
+  const newPlatform = q('bulkInpPlatform').value.trim();
+  const newPrice    = parseFloat(q('bulkInpPrice').value);
+  const newFee      = parseFloat(q('bulkInpFee').value);
+  const newNote     = q('bulkInpNote').value.trim();
+
+  if (changeDate && !newDate) return toast('請選擇日期', 'e');
+  if (changePrice && (isNaN(newPrice) || newPrice < 0)) return toast('請輸入有效單價', 'e');
+  if (changeFee && (isNaN(newFee) || newFee < 0)) return toast('請輸入有效手續費', 'e');
+
+  let updatedCount = 0;
+  DB.transactions.forEach(t => {
+    if (_selectedTxIds.has(t.id)) {
+      if (changeDate)     t.date = newDate;
+      if (changePlatform) t.platform = newPlatform;
+      if (changePrice)    t.pricePerUnitEUR = newPrice;
+      if (changeFee && t.type === 'SELL') t.fee = newFee;
+      if (changeNote)     t.note = newNote;
+      updatedCount++;
+    }
+  });
+
+  save();
+  closeModal('mBulkEdit');
+  updateKor();
+  refreshCurrentView();
+  toast(`成功批次修改 ${updatedCount} 筆交易紀錄！`, 's');
+}
+
+function bulkDeleteTransactions() {
+  if (_selectedTxIds.size === 0) return toast('請先勾選欲刪除的交易', 'w');
+  const count = _selectedTxIds.size;
+  confirm2(`確認批次刪除已選取的 ${count} 筆交易紀錄？刪除後無法復原。`, ()=>{
+    DB.transactions = DB.transactions.filter(t => !_selectedTxIds.has(t.id));
+    save();
+    updateKor();
+    refreshCurrentView();
+    toast(`已批次刪除 ${count} 筆交易`, 's');
+  });
+}
+
 // ══════════════════════════════════════════════════════════════
 //  MODAL — RECORD GRADE
 // ══════════════════════════════════════════════════════════════
@@ -3479,8 +3590,13 @@ function wireEvents() {
     });
   });
 
+  // Bulk Edit / Delete buttons
+  q('btnBulkEdit')?.addEventListener('click', openBulkEditModal);
+  q('btnBulkDelete')?.addEventListener('click', bulkDeleteTransactions);
+  q('btnApplyBulkEdit')?.addEventListener('click', applyBulkEdit);
+
   // Settings
-  q('btnSaveSettings').addEventListener('click', ()=>{
+  q('btnSaveSettings')?.addEventListener('click', ()=>{
     DB.settings.company     = q('setCo').value.trim();
     DB.settings.kvk         = q('setKvk').value.trim();
     DB.settings.korStart    = q('setKorStart').value;
@@ -3488,13 +3604,14 @@ function wireEvents() {
     save(); updateKor(); renderSettings();
     toast('設定已儲存','s');
   });
-  q('btnExport').addEventListener('click', exportJson);
-  q('btnQuickBackup').addEventListener('click', exportJson);
-  q('importFile').addEventListener('change', e=>{
+
+  q('btnExport')?.addEventListener('click', exportJson);
+  q('btnQuickBackup')?.addEventListener('click', exportJson);
+  q('importFile')?.addEventListener('change', e=>{
     if (e.target.files[0]) importJson(e.target.files[0]);
     e.target.value='';
   });
-  q('btnClearAll').addEventListener('click', ()=>{
+  q('btnClearAll')?.addEventListener('click', ()=>{
     confirm2('確認清除所有資料？此操作無法復原。請先備份！', ()=>{
       localStorage.removeItem(STORAGE_KEY);
       location.reload();

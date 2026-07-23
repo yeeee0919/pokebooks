@@ -136,6 +136,8 @@
             <select class="sel" id="txTypeFilter"><option value="">全部類型</option><option value="BUY">進貨 BUY</option><option value="SELL">銷售 SELL</option><option value="GRADE">送評 GRADE</option></select>
           </div>
           <div class="tr">
+            <button class="btn-secondary" id="btnBulkEdit" style="display:none">✏️ 批次修改已選項 (<span id="bulkCount">0</span>)</button>
+            <button class="btn-danger btn-sm" id="btnBulkDelete" style="display:none">🗑️ 批次刪除</button>
             <button class="btn-primary" id="btnAddSell">＋ 記錄銷售</button>
             <button class="btn-secondary" id="btnAddBuy">＋ 記錄進貨</button>
           </div>
@@ -421,6 +423,42 @@
       </div>
     </div>
     <div class="mft"><button class="btn-secondary" data-close="mExpense">取消</button><button class="btn-primary" id="btnSaveExpense">儲存費用</button></div>
+  </div>
+</div>
+
+<!-- Bulk Edit Modal -->
+<div class="modal-overlay" id="mBulkEdit">
+  <div class="modal">
+    <div class="mhd"><h2>✏️ 批次修改 (<span id="mBulkEditCount">0</span> 筆)</h2><button class="mclose" data-close="mBulkEdit">&times;</button></div>
+    <div class="mbd">
+      <p style="font-size:.75rem;color:var(--t2)">勾選欲批次修改的欄位（未勾選的欄位將保持原值）：</p>
+      
+      <div class="fg">
+        <label class="radio-opt"><input type="checkbox" id="chkBulkDate"/> 修改日期</label>
+        <input type="date" id="bulkInpDate" class="finp" style="margin-top:.2rem"/>
+      </div>
+      
+      <div class="fg">
+        <label class="radio-opt"><input type="checkbox" id="chkBulkPlatform"/> 修改平台 / 來源</label>
+        <input type="text" id="bulkInpPlatform" class="finp" placeholder="例如：Cardmarket / Vinted / 現場" style="margin-top:.2rem"/>
+      </div>
+      
+      <div class="fg">
+        <label class="radio-opt"><input type="checkbox" id="chkBulkPrice"/> 修改單價（EUR）</label>
+        <input type="number" id="bulkInpPrice" class="finp" placeholder="0.00" min="0" step="0.01" style="margin-top:.2rem"/>
+      </div>
+
+      <div class="fg">
+        <label class="radio-opt"><input type="checkbox" id="chkBulkFee"/> 修改平台手續費（EUR）</label>
+        <input type="number" id="bulkInpFee" class="finp" placeholder="0.00" min="0" step="0.01" style="margin-top:.2rem"/>
+      </div>
+
+      <div class="fg">
+        <label class="radio-opt"><input type="checkbox" id="chkBulkNote"/> 修改備註</label>
+        <input type="text" id="bulkInpNote" class="finp" placeholder="批次寫入備註…" style="margin-top:.2rem"/>
+      </div>
+    </div>
+    <div class="mft"><button class="btn-secondary" data-close="mBulkEdit">取消</button><button class="btn-primary" id="btnApplyBulkEdit">確認套用修改</button></div>
   </div>
 </div>
 
