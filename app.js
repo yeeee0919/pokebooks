@@ -809,29 +809,30 @@ function calculateProductMetrics(productId, scopeF = 'all') {
   };
 }
 
-function renderInventory() {
-  const scopeF  = q('invScopeFilter')?.value || 'biz';
-  const search  = (q('invSearch')?.value || '').toLowerCase();
-  const langF   = q('invLangFilter')?.value || '';
-  const statusF = q('invStatusFilter')?.value || 'all';
+let _invTypeFilters = { biz: '', priv: '' };
 
-  // Wire Pill buttons
-  const pills = q('invTypePills');
+function renderInventoryPage(scopeF = 'biz') {
+  const search  = (q(`invSearch-${scopeF}`)?.value || '').toLowerCase();
+  const langF   = q(`invLangFilter-${scopeF}`)?.value || '';
+  const statusF = q(`invStatusFilter-${scopeF}`)?.value || 'all';
+
+  // Wire Pill buttons for this scope
+  const pills = q(`invTypePills-${scopeF}`);
   if (pills) {
     pills.querySelectorAll('.pill-btn').forEach(btn => {
       btn.onclick = () => {
         pills.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        _invTypeFilter = btn.dataset.type || '';
-        renderInventory();
+        _invTypeFilters[scopeF] = btn.dataset.type || '';
+        renderInventoryPage(scopeF);
       };
     });
   }
 
   let products = DB.products;
-  if (search)        products = products.filter(p => p.name.toLowerCase().includes(search) || (p.notes||'').toLowerCase().includes(search));
-  if (_invTypeFilter) products = products.filter(p => p.type === _invTypeFilter);
-  if (langF)         products = products.filter(p => p.language === langF);
+  if (search)                  products = products.filter(p => p.name.toLowerCase().includes(search) || (p.notes||'').toLowerCase().includes(search));
+  if (_invTypeFilters[scopeF]) products = products.filter(p => p.type === _invTypeFilters[scopeF]);
+  if (langF)                   products = products.filter(p => p.language === langF);
 
   // Separate parent (raw cards / standalone) and children (graded cards)
   const parents = products.filter(p => !p.parentId);
@@ -848,17 +849,17 @@ function renderInventory() {
   const totalCostAll = allMetrics.reduce((s,m) => s + m.totalInvestment, 0);
   const totalMktAll  = allMetrics.reduce((s,m) => s + m.totalMarketVal, 0);
 
-  const scopeLabel = scopeF==='biz'?'🏢 商業帳戶':scopeF==='priv'?'👤 私人帳戶':'🏢＋👤 全部帳戶';
-  q('invMeta').innerHTML = `[${scopeLabel}] 在庫商品 <strong>${inStockCount}</strong> 種 · 共 <strong>${totalQtyAll}</strong> 張 · 總投入成本 <strong>${eur(totalCostAll)}</strong> · 現貨總市值 <strong>${eur(totalMktAll)}</strong>`;
+  const scopeLabel = scopeF==='biz'?'🏢 商業帳戶':'👤 私人帳戶';
+  q(`invMeta-${scopeF}`).innerHTML = `[${scopeLabel}] 在庫商品 <strong>${inStockCount}</strong> 種 · 共 <strong>${totalQtyAll}</strong> 張 · 總投入成本 <strong>${eur(totalCostAll)}</strong> · 現貨總市值 <strong>${eur(totalMktAll)}</strong>`;
 
-  const wrap = q('invTableWrap');
+  const wrap = q(`invTableWrap-${scopeF}`);
   if (!parents.length && !products.length) {
     wrap.innerHTML = `<div class="empty" style="padding:3rem">
       <div class="empty-ico">📦</div>
       <div class="empty-ttl">沒有符合條件的商品</div>
-      <button class="btn-primary" id="emptyAddProd">＋ 新增商品</button>
+      <button class="btn-primary emptyAddProdBtn">＋ 新增商品</button>
     </div>`;
-    q('emptyAddProd')?.addEventListener('click', () => openModalProduct());
+    wrap.querySelector('.emptyAddProdBtn')?.addEventListener('click', () => openModalProduct());
     return;
   }
 
@@ -954,7 +955,7 @@ function renderInventory() {
       const pid = t.dataset.toggle;
       if (_collapsedParents.has(pid)) _collapsedParents.delete(pid);
       else _collapsedParents.add(pid);
-      renderInventory();
+      renderInventoryPage(scopeF);
     });
   });
 
@@ -1878,14 +1879,22 @@ function wireEvents() {
   q('confirmOk').addEventListener('click', ()=>{ _confirmCb?.(); _confirmCb=null; closeModal('mConfirm'); });
   q('confirmCancel').addEventListener('click', ()=>{ _confirmCb=null; closeModal('mConfirm'); });
 
-  // Inventory filters
-  ['invSearch','invScopeFilter','invTypeFilter','invLangFilter','invStatusFilter'].forEach(id=>{
-    q(id)?.addEventListener('input', renderInventory);
-    q(id)?.addEventListener('change', renderInventory);
+  // Business Inventory filters
+  ['invSearch-biz','invLangFilter-biz','invStatusFilter-biz'].forEach(id=>{
+    q(id)?.addEventListener('input', () => renderInventoryPage('biz'));
+    q(id)?.addEventListener('change', () => renderInventoryPage('biz'));
   });
 
-  // Add product
-  q('btnAddProduct').addEventListener('click', ()=>openModalProduct());
+  // Private Inventory filters
+  ['invSearch-priv','invLangFilter-priv','invStatusFilter-priv'].forEach(id=>{
+    q(id)?.addEventListener('input', () => renderInventoryPage('priv'));
+    q(id)?.addEventListener('change', () => renderInventoryPage('priv'));
+  });
+
+  // Add product buttons
+  document.querySelectorAll('.btnAddProductBtn').forEach(btn => {
+    btn.addEventListener('click', () => openModalProduct());
+  });
 
   // Transactions
   q('btnAddSell').addEventListener('click', ()=>openModalSell());

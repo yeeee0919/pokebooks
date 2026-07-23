@@ -41,7 +41,8 @@
 
       <nav class="nav">
         <a class="nav-link active" data-tab="dashboard"><span class="nav-ico">📊</span><span>儀表板</span></a>
-        <a class="nav-link" data-tab="inventory"><span class="nav-ico">📦</span><span>庫存管理</span></a>
+        <a class="nav-link" data-tab="inventory-biz"><span class="nav-ico">🏢</span><span>商業庫存 (報稅)</span></a>
+        <a class="nav-link" data-tab="inventory-priv"><span class="nav-ico">👤</span><span>私人庫存 (個人)</span></a>
         <a class="nav-link" data-tab="transactions"><span class="nav-ico">↕️</span><span>交易記錄</span></a>
         <a class="nav-link" data-tab="expenses"><span class="nav-ico">💸</span><span>費用記錄</span></a>
         <a class="nav-link" data-tab="reports"><span class="nav-ico">📋</span><span>損益報表</span></a>
@@ -111,11 +112,11 @@
         </div>
       </div>
 
-      <!-- ── INVENTORY ── -->
-      <div class="view" id="view-inventory">
+      <!-- ── BUSINESS INVENTORY ── -->
+      <div class="view" id="view-inventory-biz">
         <div class="toolbar" style="flex-wrap:wrap;gap:.75rem">
           <div class="tl" style="flex-wrap:wrap;gap:.5rem">
-            <div class="pill-tabs" id="invTypePills">
+            <div class="pill-tabs" id="invTypePills-biz">
               <button class="pill-btn active" data-type="">全部</button>
               <button class="pill-btn" data-type="卡盒">卡盒</button>
               <button class="pill-btn" data-type="周邊">周邊</button>
@@ -123,17 +124,40 @@
               <button class="pill-btn" data-type="畫作">畫作</button>
               <button class="pill-btn" data-type="鑑定卡">鑑定卡</button>
             </div>
-            <select class="sel" id="invScopeFilter"><option value="all">🏢＋👤 全部帳戶</option><option value="biz" selected>🏢 商業帳戶 (報稅用)</option><option value="priv">👤 私人帳戶 (個人收藏)</option></select>
-            <select class="sel" id="invLangFilter"><option value="">全部語言</option><option>英文</option><option>日文</option><option>繁體中文</option><option>其他</option></select>
-            <select class="sel" id="invStatusFilter"><option value="all">全部商品</option><option value="instock">僅在庫商品</option></select>
+            <select class="sel" id="invLangFilter-biz"><option value="">全部語言</option><option>英文</option><option>日文</option><option>繁體中文</option><option>其他</option></select>
+            <select class="sel" id="invStatusFilter-biz"><option value="all">全部商品</option><option value="instock">僅在庫商品</option></select>
           </div>
           <div class="tr">
-            <input class="search-box" id="invSearch" type="search" placeholder="搜尋商品…"/>
-            <button class="btn-secondary" id="btnAddProduct">＋ 新增商品</button>
+            <input class="search-box" id="invSearch-biz" type="search" placeholder="搜尋商品…"/>
+            <button class="btn-secondary btnAddProductBtn">＋ 新增商品</button>
           </div>
         </div>
-        <div class="inv-meta" id="invMeta">載入中…</div>
-        <div class="inv-table-wrap" id="invTableWrap"></div>
+        <div class="inv-meta" id="invMeta-biz">載入中…</div>
+        <div class="inv-table-wrap" id="invTableWrap-biz"></div>
+      </div>
+
+      <!-- ── PRIVATE INVENTORY ── -->
+      <div class="view" id="view-inventory-priv">
+        <div class="toolbar" style="flex-wrap:wrap;gap:.75rem">
+          <div class="tl" style="flex-wrap:wrap;gap:.5rem">
+            <div class="pill-tabs" id="invTypePills-priv">
+              <button class="pill-btn active" data-type="">全部</button>
+              <button class="pill-btn" data-type="卡盒">卡盒</button>
+              <button class="pill-btn" data-type="周邊">周邊</button>
+              <button class="pill-btn" data-type="單卡">單卡</button>
+              <button class="pill-btn" data-type="畫作">畫作</button>
+              <button class="pill-btn" data-type="鑑定卡">鑑定卡</button>
+            </div>
+            <select class="sel" id="invLangFilter-priv"><option value="">全部語言</option><option>英文</option><option>日文</option><option>繁體中文</option><option>其他</option></select>
+            <select class="sel" id="invStatusFilter-priv"><option value="all">全部商品</option><option value="instock">僅在庫商品</option></select>
+          </div>
+          <div class="tr">
+            <input class="search-box" id="invSearch-priv" type="search" placeholder="搜尋商品…"/>
+            <button class="btn-secondary btnAddProductBtn">＋ 新增商品</button>
+          </div>
+        </div>
+        <div class="inv-meta" id="invMeta-priv">載入中…</div>
+        <div class="inv-table-wrap" id="invTableWrap-priv"></div>
       </div>
 
       <!-- ── TRANSACTIONS ── -->
