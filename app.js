@@ -1802,6 +1802,14 @@ function wireEvents() {
 
   q('btnExport')?.addEventListener('click', exportJson);
   q('btnQuickBackup')?.addEventListener('click', exportJson);
+  q('btnLoadPresetProducts')?.addEventListener('click', ()=>{
+    confirm2('確認載入 65+ 款預設商品目錄？這會將商品補齊至你的商品清單。', ()=>{
+      DB.products = DEFAULT.products || [];
+      save();
+      refreshCurrentView();
+      toast('預設商品清單已成功載入！', 's');
+    });
+  });
   q('importFile')?.addEventListener('change', e=>{
     if (e.target.files[0]) importJson(e.target.files[0]);
     e.target.value='';

@@ -118,7 +118,7 @@
             <input class="search-box" id="invSearch" type="search" placeholder="搜尋卡名…"/>
             <select class="sel" id="invTypeFilter"><option value="">全部類型</option><option>單卡</option><option>卡盒</option><option>鑑定卡</option><option>畫作</option><option>周邊</option></select>
             <select class="sel" id="invLangFilter"><option value="">全部語言</option><option>英文</option><option>日文</option><option>繁體中文</option><option>其他</option></select>
-            <select class="sel" id="invStatusFilter"><option value="instock">在庫商品</option><option value="all">全部（含售完）</option></select>
+            <select class="sel" id="invStatusFilter"><option value="all">全部商品</option><option value="instock">僅在庫商品</option></select>
           </div>
           <div class="tr">
             <button class="btn-secondary" id="btnAddProduct">＋ 新增商品</button>
@@ -201,8 +201,9 @@
           </div>
           <div class="panel">
             <p class="panel-title">💾 手動備份 & 還原</p>
-            <p class="panel-desc">匯入舊版 PokeLedger 備份完全相容。</p>
+            <p class="panel-desc">可一次匯入預設商品清單，或匯入舊版 JSON 備份。</p>
             <div class="bkp-row">
+              <button class="btn-secondary" id="btnLoadPresetProducts">📦 載入 65+ 預設商品清單</button>
               <button class="btn-primary" id="btnExport">📤 匯出 JSON</button>
               <label class="btn-secondary lbl-btn">📥 匯入 JSON<input type="file" id="importFile" accept=".json" style="display:none"/></label>
             </div>
