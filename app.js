@@ -746,69 +746,221 @@ function renderDashboard() {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  INVENTORY
+//  INVENTORY (FINANCIAL TREE-TABLE VIEW)
 // ══════════════════════════════════════════════════════════════
+let _invTypeFilter = '';
+let _collapsedParents = new Set();
+
+function calculateProductMetrics(productId, scopeF = 'all') {
+  const p = DB.products.find(x => x.id === productId);
+  if (!p) return null;
+
+  // Filter transactions by product & scope
+  const buyTxns  = DB.transactions.filter(t => (t.productId === productId || (t.type==='GRADE' && t.targetProductId===productId)) && t.type==='BUY' && (scopeF==='all' || (t.scope||'biz')===scopeF));
+  const sellTxns = DB.transactions.filter(t => t.productId === productId && t.type==='SELL' && (scopeF==='all' || (t.scope||'biz')===scopeF));
+  const gradeOut = DB.transactions.filter(t => t.productId === productId && t.type==='GRADE' && (scopeF==='all' || (t.scope||'biz')===scopeF));
+  const gradeIn  = DB.transactions.filter(t => t.targetProductId === productId && t.type==='GRADE' && (scopeF==='all' || (t.scope||'biz')===scopeF));
+
+  const totalBuyQty = buyTxns.reduce((s,t) => s + t.quantity, 0) + gradeIn.reduce((s,t) => s + t.quantity, 0);
+  const totalSellQty = sellTxns.reduce((s,t) => s + t.quantity, 0);
+  const totalGradeOutQty = gradeOut.reduce((s,t) => s + t.quantity, 0);
+
+  const remainQty = getQty(productId, scopeF);
+  const wacc = getWACC(productId, '9999-99-99', scopeF);
+  const marketPrice = p.marketPriceEUR || 0;
+
+  // Percent change = (Market - WACC) / WACC
+  const priceChangePct = wacc > 0 && marketPrice > 0 ? ((marketPrice - wacc) / wacc * 100) : 0;
+
+  // 總投入 = 剩餘庫存總成本
+  const totalInvestment = wacc * remainQty;
+
+  // 已實現利潤 = 銷售總收入 - 銷售總COGS - 銷售手續費
+  const totalRev = sellTxns.reduce((s,t) => s + t.quantity * (t.pricePerUnitEUR||0), 0);
+  const totalFees = sellTxns.reduce((s,t) => s + (t.fee||0), 0);
+  const totalCogs = sellTxns.reduce((s,t) => s + (t.cogsPerUnit != null ? t.cogsPerUnit * t.quantity : computeCogs(t.productId, t.date, t.quantity, scopeF)), 0);
+  const realizedProfit = totalRev - totalCogs - totalFees;
+
+  // 回本進度: Net Invested = Total Cost of ALL Buys - Total Revenue from Sells
+  // If Net Invested <= 0, 已回本! Otherwise, 剩餘需回本金額 / 市價 = 打平張數
+  const grossSpent = buyTxns.reduce((s,t) => s + t.quantity * (t.pricePerUnitEUR||0), 0);
+  const netInvested = grossSpent - (totalRev - totalFees);
+
+  let breakEvenText = '';
+  let breakEvenCls  = '';
+  if (netInvested <= 0 && (totalSellQty > 0 || totalBuyQty > 0)) {
+    breakEvenText = '✓ 已回本';
+    breakEvenCls  = 'badge-payback';
+  } else if (marketPrice > 0 && netInvested > 0) {
+    const needQty = Math.ceil(netInvested / marketPrice);
+    breakEvenText = `${eur(netInvested, 0)} (${needQty} 張)`;
+    breakEvenCls  = 'badge-neg';
+  } else {
+    breakEvenText = eur(Math.max(0, netInvested), 0);
+    breakEvenCls  = 'badge-flat';
+  }
+
+  // 現貨市值
+  const totalMarketVal = remainQty * marketPrice;
+
+  return {
+    p, totalBuyQty, totalSellQty, remainQty, wacc, marketPrice,
+    priceChangePct, totalInvestment, realizedProfit, breakEvenText, breakEvenCls, totalMarketVal
+  };
+}
+
 function renderInventory() {
-  const scopeF    = q('invScopeFilter')?.value||'biz';
-  const search    = (q('invSearch')?.value||'').toLowerCase();
-  const typeF     = q('invTypeFilter')?.value||'';
-  const langF     = q('invLangFilter')?.value||'';
-  const statusF   = q('invStatusFilter')?.value||'all';
+  const scopeF  = q('invScopeFilter')?.value || 'biz';
+  const search  = (q('invSearch')?.value || '').toLowerCase();
+  const langF   = q('invLangFilter')?.value || '';
+  const statusF = q('invStatusFilter')?.value || 'all';
+
+  // Wire Pill buttons
+  const pills = q('invTypePills');
+  if (pills) {
+    pills.querySelectorAll('.pill-btn').forEach(btn => {
+      btn.onclick = () => {
+        pills.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        _invTypeFilter = btn.dataset.type || '';
+        renderInventory();
+      };
+    });
+  }
 
   let products = DB.products;
-  if (search)  products = products.filter(p=>p.name.toLowerCase().includes(search)||(p.notes||'').toLowerCase().includes(search));
-  if (typeF)   products = products.filter(p=>p.type===typeF);
-  if (langF)   products = products.filter(p=>p.language===langF);
+  if (search)        products = products.filter(p => p.name.toLowerCase().includes(search) || (p.notes||'').toLowerCase().includes(search));
+  if (_invTypeFilter) products = products.filter(p => p.type === _invTypeFilter);
+  if (langF)         products = products.filter(p => p.language === langF);
 
-  const withQty = products.map(p=>({p, qty:getQty(p.id, scopeF)}));
-  const filtered = statusF==='instock' ? withQty.filter(x=>x.qty>0) : withQty;
+  // Separate parent (raw cards / standalone) and children (graded cards)
+  const parents = products.filter(p => !p.parentId);
+  const childrenMap = new Map();
+  products.filter(p => p.parentId).forEach(ch => {
+    if (!childrenMap.has(ch.parentId)) childrenMap.set(ch.parentId, []);
+    childrenMap.get(ch.parentId).push(ch);
+  });
 
-  const inStockCount   = withQty.filter(x=>x.qty>0).length;
-  const totalQtyAll    = withQty.reduce((s,x)=>s+x.qty,0);
-  const totalCostAll   = withQty.reduce((s,x)=>s+getInventoryCost(x.p.id, scopeF),0);
-  const totalMarketAll = withQty.reduce((s,x)=>s+x.qty*(x.p.marketPriceEUR||0),0);
+  // Calculate summary meta
+  const allMetrics = products.map(p => calculateProductMetrics(p.id, scopeF)).filter(Boolean);
+  const inStockCount = allMetrics.filter(m => m.remainQty > 0).length;
+  const totalQtyAll  = allMetrics.reduce((s,m) => s + m.remainQty, 0);
+  const totalCostAll = allMetrics.reduce((s,m) => s + m.totalInvestment, 0);
+  const totalMktAll  = allMetrics.reduce((s,m) => s + m.totalMarketVal, 0);
 
   const scopeLabel = scopeF==='biz'?'🏢 商業帳戶':scopeF==='priv'?'👤 私人帳戶':'🏢＋👤 全部帳戶';
-  q('invMeta').innerHTML = `[${scopeLabel}] 在庫商品 <strong>${inStockCount}</strong> 種 · 共 <strong>${totalQtyAll}</strong> 張 · 帳面成本 <strong>${eur(totalCostAll)}</strong> · 市值估算 <strong>${eur(totalMarketAll)}</strong>`;
+  q('invMeta').innerHTML = `[${scopeLabel}] 在庫商品 <strong>${inStockCount}</strong> 種 · 共 <strong>${totalQtyAll}</strong> 張 · 總投入成本 <strong>${eur(totalCostAll)}</strong> · 現貨總市值 <strong>${eur(totalMktAll)}</strong>`;
 
-  const grid = q('productGrid');
-  if (!filtered.length) {
-    grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
+  const wrap = q('invTableWrap');
+  if (!parents.length && !products.length) {
+    wrap.innerHTML = `<div class="empty" style="padding:3rem">
       <div class="empty-ico">📦</div>
       <div class="empty-ttl">沒有符合條件的商品</div>
-      <div class="empty-desc">嘗試修改搜尋條件，或點擊「新增商品」建立第一筆。</div>
       <button class="btn-primary" id="emptyAddProd">＋ 新增商品</button>
     </div>`;
-    q('emptyAddProd')?.addEventListener('click', ()=>openModalProduct());
+    q('emptyAddProd')?.addEventListener('click', () => openModalProduct());
     return;
   }
 
-  grid.innerHTML = filtered.map(({p, qty})=>{
-    const wacc   = getWACC(p.id, '9999-99-99');
-    const cost   = wacc * qty;
-    const market = (p.marketPriceEUR||0) * qty;
-    const profit = market - cost;
-    const profitCls = profit>=0?'pos':'neg';
-    const profitSign = profit>=0?'▲':'▼';
-    return `<div class="prod-card" data-id="${p.id}">
-      <div class="prod-card-top">
-        <div class="prod-name">${esc(p.name)}</div>
-        <span class="type-badge ${esc(p.type)}">${esc(p.type)}</span>
-      </div>
-      <div class="prod-meta">${esc(p.language||'—')}${p.notes?` · ${esc(p.notes)}`:''}</div>
-      <div class="prod-stats">
-        <div class="prod-qty">在庫 <strong>${qty}</strong> 張</div>
-        <div class="prod-prices">
-          ${wacc>0?`<span class="prod-cost">成本 ${eur(wacc)}/張</span>`:''}
-          ${p.marketPriceEUR?`<span class="prod-market">市值 ${eur(p.marketPriceEUR)}</span>`:''}
-          ${qty>0&&wacc>0&&p.marketPriceEUR?`<span class="prod-profit ${profitCls}">${profitSign}${eur(Math.abs(profit))} 未實現</span>`:''}
-        </div>
-      </div>
-    </div>`;
-  }).join('');
+  let rowsHtml = '';
+  parents.forEach(p => {
+    const m = calculateProductMetrics(p.id, scopeF);
+    if (!m) return;
+    if (statusF === 'instock' && m.remainQty === 0) return;
 
-  grid.querySelectorAll('.prod-card').forEach(card=>{
-    card.addEventListener('click', ()=>openDetail(card.dataset.id));
+    const children = childrenMap.get(p.id) || [];
+    const hasChildren = children.length > 0;
+    const isCollapsed = _collapsedParents.has(p.id);
+
+    const changeSign = m.priceChangePct >= 0 ? '+' : '';
+    const changeCls  = m.priceChangePct >= 0 ? 'badge-pos' : 'badge-neg';
+    const profitSign = m.realizedProfit > 0 ? '+' : '';
+    const profitCls  = m.realizedProfit > 0 ? 'badge-pos' : m.realizedProfit < 0 ? 'badge-neg' : 'badge-flat';
+
+    rowsHtml += `<tr class="parent-row" data-id="${p.id}">
+      <td>
+        <div class="tree-tree-cell">
+          ${hasChildren ? `<span class="tree-toggle" data-toggle="${p.id}">${isCollapsed ? '►' : '▼'}</span>` : `<span class="tree-indent"></span>`}
+          <span style="font-weight:700">${esc(p.name)}</span>
+          <span class="type-badge ${esc(p.type)}">${esc(p.type)}</span>
+        </div>
+      </td>
+      <td class="mono" style="text-align:right">${m.totalBuyQty || '—'}</td>
+      <td class="mono" style="text-align:right">${m.totalSellQty || '—'}</td>
+      <td class="mono" style="text-align:right;font-weight:800">${m.remainQty}</td>
+      <td class="mono" style="text-align:right;color:var(--t2)">${m.wacc > 0 ? eur(m.wacc) : '—'}</td>
+      <td class="mono" style="text-align:right;font-weight:700">${m.marketPrice > 0 ? eur(m.marketPrice) : '—'}</td>
+      <td class="mono ${changeCls}" style="text-align:right">${m.wacc > 0 && m.marketPrice > 0 ? changeSign + m.priceChangePct.toFixed(1) + '%' : '—'}</td>
+      <td class="mono" style="text-align:right">${m.totalInvestment > 0 ? eur(m.totalInvestment) : '€0'}</td>
+      <td class="mono ${profitCls}" style="text-align:right">${m.realizedProfit !== 0 ? profitSign + eur(m.realizedProfit) : '€0'}</td>
+      <td style="text-align:center" class="${m.breakEvenCls}">${m.breakEvenText}</td>
+      <td class="mono" style="text-align:right;font-weight:800;color:var(--gold)">${m.totalMarketVal > 0 ? eur(m.totalMarketVal) : '€0'}</td>
+    </tr>`;
+
+    // Render children if not collapsed
+    if (hasChildren && !isCollapsed) {
+      children.forEach(ch => {
+        const cm = calculateProductMetrics(ch.id, scopeF);
+        if (!cm) return;
+        const cChangeSign = cm.priceChangePct >= 0 ? '+' : '';
+        const cChangeCls  = cm.priceChangePct >= 0 ? 'badge-pos' : 'badge-neg';
+        const cProfitSign = cm.realizedProfit > 0 ? '+' : '';
+        const cProfitCls  = cm.realizedProfit > 0 ? 'badge-pos' : cm.realizedProfit < 0 ? 'badge-neg' : 'badge-flat';
+
+        rowsHtml += `<tr class="child-row" data-id="${ch.id}">
+          <td style="padding-left:1.8rem">
+            <div class="tree-tree-cell">
+              <span style="color:var(--b2);margin-right:4px">└</span>
+              <span style="font-weight:600">${esc(ch.name)}</span>
+              <span class="type-badge ${esc(ch.type)}">${esc(ch.type)}</span>
+            </div>
+          </td>
+          <td class="mono" style="text-align:right">${cm.totalBuyQty || '—'}</td>
+          <td class="mono" style="text-align:right">${cm.totalSellQty || '—'}</td>
+          <td class="mono" style="text-align:right;font-weight:800">${cm.remainQty}</td>
+          <td class="mono" style="text-align:right;color:var(--t2)">${cm.wacc > 0 ? eur(cm.wacc) : '—'}</td>
+          <td class="mono" style="text-align:right;font-weight:700">${cm.marketPrice > 0 ? eur(cm.marketPrice) : '—'}</td>
+          <td class="mono ${cChangeCls}" style="text-align:right">${cm.wacc > 0 && cm.marketPrice > 0 ? cChangeSign + cm.priceChangePct.toFixed(1) + '%' : '—'}</td>
+          <td class="mono" style="text-align:right">${cm.totalInvestment > 0 ? eur(cm.totalInvestment) : '€0'}</td>
+          <td class="mono ${cProfitCls}" style="text-align:right">${cm.realizedProfit !== 0 ? cProfitSign + eur(cm.realizedProfit) : '€0'}</td>
+          <td style="text-align:center" class="${cm.breakEvenCls}">${cm.breakEvenText}</td>
+          <td class="mono" style="text-align:right;font-weight:800;color:var(--gold)">${cm.totalMarketVal > 0 ? eur(cm.totalMarketVal) : '€0'}</td>
+        </tr>`;
+      });
+    }
+  });
+
+  wrap.innerHTML = `<table class="inv-table">
+    <thead><tr>
+      <th>項目名稱</th>
+      <th style="text-align:right">購入</th>
+      <th style="text-align:right">售出</th>
+      <th style="text-align:right">剩餘</th>
+      <th style="text-align:right">均進價</th>
+      <th style="text-align:right">市值/張</th>
+      <th style="text-align:right">漲跌幅</th>
+      <th style="text-align:right">總投入</th>
+      <th style="text-align:right">已實現利潤</th>
+      <th style="text-align:center">回本進度</th>
+      <th style="text-align:right">現貨市值</th>
+    </tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>`;
+
+  // Wire tree toggle
+  wrap.querySelectorAll('.tree-toggle').forEach(t => {
+    t.addEventListener('click', e => {
+      e.stopPropagation();
+      const pid = t.dataset.toggle;
+      if (_collapsedParents.has(pid)) _collapsedParents.delete(pid);
+      else _collapsedParents.add(pid);
+      renderInventory();
+    });
+  });
+
+  // Wire row click to open product detail modal/panel
+  wrap.querySelectorAll('tr[data-id]').forEach(tr => {
+    tr.addEventListener('click', () => openDetail(tr.dataset.id));
   });
 }
 

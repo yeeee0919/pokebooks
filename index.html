@@ -113,20 +113,27 @@
 
       <!-- ── INVENTORY ── -->
       <div class="view" id="view-inventory">
-        <div class="toolbar">
-          <div class="tl">
+        <div class="toolbar" style="flex-wrap:wrap;gap:.75rem">
+          <div class="tl" style="flex-wrap:wrap;gap:.5rem">
+            <div class="pill-tabs" id="invTypePills">
+              <button class="pill-btn active" data-type="">全部</button>
+              <button class="pill-btn" data-type="卡盒">卡盒</button>
+              <button class="pill-btn" data-type="周邊">周邊</button>
+              <button class="pill-btn" data-type="單卡">單卡</button>
+              <button class="pill-btn" data-type="畫作">畫作</button>
+              <button class="pill-btn" data-type="鑑定卡">鑑定卡</button>
+            </div>
             <select class="sel" id="invScopeFilter"><option value="all">🏢＋👤 全部帳戶</option><option value="biz" selected>🏢 商業帳戶 (報稅用)</option><option value="priv">👤 私人帳戶 (個人收藏)</option></select>
-            <input class="search-box" id="invSearch" type="search" placeholder="搜尋卡名…"/>
-            <select class="sel" id="invTypeFilter"><option value="">全部類型</option><option>單卡</option><option>卡盒</option><option>鑑定卡</option><option>畫作</option><option>周邊</option></select>
             <select class="sel" id="invLangFilter"><option value="">全部語言</option><option>英文</option><option>日文</option><option>繁體中文</option><option>其他</option></select>
             <select class="sel" id="invStatusFilter"><option value="all">全部商品</option><option value="instock">僅在庫商品</option></select>
           </div>
           <div class="tr">
+            <input class="search-box" id="invSearch" type="search" placeholder="搜尋商品…"/>
             <button class="btn-secondary" id="btnAddProduct">＋ 新增商品</button>
           </div>
         </div>
         <div class="inv-meta" id="invMeta">載入中…</div>
-        <div class="product-grid" id="productGrid"></div>
+        <div class="inv-table-wrap" id="invTableWrap"></div>
       </div>
 
       <!-- ── TRANSACTIONS ── -->

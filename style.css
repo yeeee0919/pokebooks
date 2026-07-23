@@ -289,12 +289,53 @@ input, select { font-family: var(--font); }
 }
 .inv-meta strong, .summary-strip strong { color: var(--t1); }
 
-/* ─── PRODUCT GRID ─── */
-.product-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: .7rem;
+/* ─── PILL TABS ─── */
+.pill-tabs {
+  display: inline-flex; background: var(--s2);
+  border: 1px solid var(--b1); border-radius: var(--r1);
+  padding: 2px; gap: 2px;
 }
+.pill-btn {
+  background: transparent; border: none; color: var(--t2);
+  padding: .3rem .65rem; font-size: .75rem; font-weight: 600;
+  border-radius: var(--r1); transition: all .15s;
+}
+.pill-btn:hover { color: var(--t1); }
+.pill-btn.active { background: var(--s1); color: var(--gold); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+
+/* ─── INVENTORY TREE TABLE ─── */
+.inv-table-wrap {
+  background: var(--s1); border: 1px solid var(--b1);
+  border-radius: var(--r2); overflow-x: auto;
+}
+.inv-table {
+  width: 100%; border-collapse: collapse; font-size: .78rem; text-align: left;
+}
+.inv-table th {
+  background: var(--s2); color: var(--t2); font-weight: 700;
+  padding: .6rem .75rem; border-bottom: 1px solid var(--b1);
+  white-space: nowrap; font-size: .7rem; text-transform: uppercase; letter-spacing: .3px;
+}
+.inv-table td {
+  padding: .55rem .75rem; border-bottom: 1px solid var(--b1);
+  color: var(--t1); white-space: nowrap; vertical-align: middle;
+}
+.inv-table tr.parent-row { background: var(--s1); font-weight: 600; }
+.inv-table tr.parent-row:hover { background: var(--s2); }
+.inv-table tr.child-row { background: var(--s2); font-size: .74rem; color: var(--t2); }
+.inv-table tr.child-row:hover { background: var(--s3); }
+
+.tree-tree-cell { display: flex; align-items: center; gap: .4rem; }
+.tree-toggle {
+  cursor: pointer; user-select: none; width: 14px; text-align: center;
+  color: var(--t3); font-size: .7rem; transition: transform .15s;
+}
+.tree-indent { display: inline-block; width: 18px; color: var(--b2); text-align: right; margin-right: 4px; }
+
+.badge-pos { color: var(--green); font-weight: 700; }
+.badge-neg { color: var(--red); font-weight: 700; }
+.badge-payback { color: var(--green); font-weight: 700; }
+.badge-flat { color: var(--t3); }
 .prod-card {
   background: var(--s1); border: 1px solid var(--b1);
   border-radius: var(--r3); padding: 1rem 1.1rem;
