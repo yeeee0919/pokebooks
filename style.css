@@ -4,26 +4,26 @@
 ═══════════════════════════════════════ */
 
 :root {
-  --bg:      #090e18;
-  --s1:      #0f1623;
-  --s2:      #161f30;
-  --s3:      #1d2840;
-  --b1:      #1f2d45;
-  --b2:      #2a3d5c;
+  --bg:      #f4f6f9;
+  --s1:      #ffffff;
+  --s2:      #f8fafc;
+  --s3:      #e2e8f0;
+  --b1:      #e2e8f0;
+  --b2:      #cbd5e1;
 
-  --gold:    #e8b84b;
-  --gold2:   #c9922a;
-  --glow:    rgba(232,184,75,.15);
+  --gold:    #d97706;
+  --gold2:   #b45309;
+  --glow:    rgba(217,119,6,.12);
 
-  --blue:    #4f8ef7;
-  --green:   #34d399;
-  --red:     #f87171;
-  --orange:  #fb923c;
-  --purple:  #a78bfa;
+  --blue:    #2563eb;
+  --green:   #059669;
+  --red:     #dc2626;
+  --orange:  #ea580c;
+  --purple:  #7c3aed;
 
-  --t1: #f0f4ff;
-  --t2: #8fa8c8;
-  --t3: #4d6a8a;
+  --t1: #0f172a;
+  --t2: #475569;
+  --t3: #64748b;
 
   --font: 'Outfit', sans-serif;
   --mono: 'JetBrains Mono', monospace;
