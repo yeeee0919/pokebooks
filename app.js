@@ -4079,7 +4079,6 @@ q('btnSaveBuy').addEventListener('click', ()=>{
 
   save();
   // Commit proof images for each newly created transaction ID
-  const editId = q('buyEditId').value;
   if (editId) {
     proofCommit('buy', editId).then(() => {
       closeModal('mBuy'); refreshCurrentView();
