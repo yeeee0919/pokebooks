@@ -2892,9 +2892,17 @@ function load() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      const importedPrivIds = new Set(DEFAULT.transactions.filter(t => t.scope === 'priv').map(t => t.id));
+      const txns = (parsed.transactions && parsed.transactions.length) ? parsed.transactions : DEFAULT.transactions;
+      txns.forEach(t => {
+        if (importedPrivIds.has(t.id)) {
+          t.scope = 'priv';
+        }
+      });
       return {
         ...DEFAULT,
         ...parsed,
+        transactions: txns,
         settings: { ...DEFAULT.settings, ...(parsed.settings || {}) },
         expenses: parsed.expenses || [],
       };
@@ -3253,6 +3261,22 @@ function renderInventoryPage(scopeF = 'biz') {
     childrenMap.get(ch.parentId).push(ch);
   });
 
+  // Filter parents to only those with activity/inventory in this scope
+  const activeParents = parents.filter(p => {
+    const m = calculateProductMetrics(p.id, scopeF);
+    if (!m) return false;
+    const children = childrenMap.get(p.id) || [];
+    const childrenMetrics = children.map(ch => calculateProductMetrics(ch.id, scopeF)).filter(Boolean);
+
+    const parentHasAct = (m.totalBuyQty > 0 || m.totalSellQty > 0 || m.remainQty > 0);
+    const childHasAct  = childrenMetrics.some(cm => cm.totalBuyQty > 0 || cm.totalSellQty > 0 || cm.remainQty > 0);
+
+    if (statusF === 'instock') {
+      return (m.remainQty > 0) || childrenMetrics.some(cm => cm.remainQty > 0);
+    }
+    return parentHasAct || childHasAct;
+  });
+
   // Calculate summary meta
   const allMetrics = products.map(p => calculateProductMetrics(p.id, scopeF)).filter(Boolean);
   const inStockCount = allMetrics.filter(m => m.remainQty > 0).length;
@@ -3264,7 +3288,7 @@ function renderInventoryPage(scopeF = 'biz') {
   q(`invMeta-${scopeF}`).innerHTML = `[${scopeLabel}] 在庫商品 <strong>${inStockCount}</strong> 種 · 共 <strong>${totalQtyAll}</strong> 張 · 總投入成本 <strong>${eur(totalCostAll)}</strong> · 現貨總市值 <strong>${eur(totalMktAll)}</strong>`;
 
   const wrap = q(`invTableWrap-${scopeF}`);
-  if (!parents.length && !products.length) {
+  if (!activeParents.length) {
     wrap.innerHTML = `<div class="empty" style="padding:3rem">
       <div class="empty-ico">📦</div>
       <div class="empty-ttl">沒有符合條件的商品</div>
@@ -3275,10 +3299,9 @@ function renderInventoryPage(scopeF = 'biz') {
   }
 
   let rowsHtml = '';
-  parents.forEach(p => {
+  activeParents.forEach(p => {
     const m = calculateProductMetrics(p.id, scopeF);
     if (!m) return;
-    if (statusF === 'instock' && m.remainQty === 0) return;
 
     const children = childrenMap.get(p.id) || [];
     const hasChildren = children.length > 0;
@@ -3314,6 +3337,9 @@ function renderInventoryPage(scopeF = 'biz') {
       children.forEach(ch => {
         const cm = calculateProductMetrics(ch.id, scopeF);
         if (!cm) return;
+        if (statusF === 'instock' && cm.remainQty === 0) return;
+        if (statusF === 'all' && cm.totalBuyQty === 0 && cm.totalSellQty === 0 && cm.remainQty === 0) return;
+
         const cChangeSign = cm.priceChangePct >= 0 ? '+' : '';
         const cChangeCls  = cm.priceChangePct >= 0 ? 'badge-pos' : 'badge-neg';
         const cProfitSign = cm.realizedProfit > 0 ? '+' : '';
