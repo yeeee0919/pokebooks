@@ -382,7 +382,19 @@
         </div>
       </div>
       <div class="receipt-hint" id="buySourceHint"></div>
-      <div class="fg"><label>備註</label><input type="text" id="buyNote" class="finp" placeholder="賣家、備註…"/></div>
+      <div class="fg"><label>備註</label><input type="text" id="buyNote" class="finp" placeholder="賣家、對話截圖描述…"/></div>
+      <div class="fg">
+        <label>📎 憑證圖片（刷卡紀錄、對話截圖、收據…）</label>
+        <div class="proof-upload-zone" id="buyProofZone">
+          <input type="file" id="buyProofInput" accept="image/*" multiple/>
+          <label for="buyProofInput" class="proof-upload-label">
+            <span class="upload-ico">🖼️</span>
+            <span>點擊上傳圖片，或拖曳到此處</span>
+            <span style="font-size:.75rem;opacity:.6">支援 JPG、PNG、WEBP、HEIC，可多選</span>
+          </label>
+          <div class="proof-thumbs" id="buyProofThumbs"></div>
+        </div>
+      </div>
     </div>
     <div class="mft"><button class="btn-secondary" data-close="mBuy">取消</button><button class="btn-primary" id="btnSaveBuy">儲存進貨</button></div>
   </div>
@@ -429,7 +441,19 @@
         <div class="pb-row total"><span>毛利</span><span id="pb-gp">—</span></div>
       </div>
       <div class="kor-check" id="sellKorCheck"></div>
-      <div class="fg"><label>備註</label><input type="text" id="sellNote" class="finp" placeholder="備註…"/></div>
+      <div class="fg"><label>備註</label><input type="text" id="sellNote" class="finp" placeholder="買家、平台訂單號…"/></div>
+      <div class="fg">
+        <label>📎 憑證圖片（賣出截圖、匯款確認、對話紀錄…）</label>
+        <div class="proof-upload-zone" id="sellProofZone">
+          <input type="file" id="sellProofInput" accept="image/*" multiple/>
+          <label for="sellProofInput" class="proof-upload-label">
+            <span class="upload-ico">🖼️</span>
+            <span>點擊上傳圖片，或拖曳到此處</span>
+            <span style="font-size:.75rem;opacity:.6">支援 JPG、PNG、WEBP、HEIC，可多選</span>
+          </label>
+          <div class="proof-thumbs" id="sellProofThumbs"></div>
+        </div>
+      </div>
     </div>
     <div class="mft"><button class="btn-secondary" data-close="mSell">取消</button><button class="btn-primary" id="btnSaveSell">確認記錄銷售</button></div>
   </div>

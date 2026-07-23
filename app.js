@@ -9,6 +9,168 @@ const STORAGE_KEY = 'pokeledger_v2';
 const KOR_LIMIT   = 20000;
 const MILEAGE_RATE = 0.23; // 2026 Dutch rate
 
+// ── IndexedDB Proof-Image Engine ───────────────────────────────
+const PROOF_DB_NAME    = 'pokeledger_proofs';
+const PROOF_DB_VERSION = 1;
+const PROOF_STORE      = 'images';
+
+let _proofDB = null;
+function openProofDB() {
+  if (_proofDB) return Promise.resolve(_proofDB);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(PROOF_DB_NAME, PROOF_DB_VERSION);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(PROOF_STORE)) {
+        const store = db.createObjectStore(PROOF_STORE, { keyPath: 'imgId' });
+        store.createIndex('txId', 'txId', { unique: false });
+      }
+    };
+    req.onsuccess = e => { _proofDB = e.target.result; resolve(_proofDB); };
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+// Store a File as a Blob under a given txId
+async function proofStore(txId, file) {
+  const db = await openProofDB();
+  const imgId = uid();
+  const rec = { imgId, txId, name: file.name, type: file.type, blob: file, addedAt: Date.now() };
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PROOF_STORE, 'readwrite');
+    tx.objectStore(PROOF_STORE).add(rec).onsuccess = () => resolve(imgId);
+    tx.onerror = e => reject(e.target.error);
+  });
+}
+
+// Get all proof images for a txId
+async function proofGetAll(txId) {
+  const db = await openProofDB();
+  return new Promise((resolve, reject) => {
+    const tx    = db.transaction(PROOF_STORE, 'readonly');
+    const idx   = tx.objectStore(PROOF_STORE).index('txId');
+    const req   = idx.getAll(txId);
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+// Delete a single proof image by imgId
+async function proofDelete(imgId) {
+  const db = await openProofDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PROOF_STORE, 'readwrite');
+    tx.objectStore(PROOF_STORE).delete(imgId).onsuccess = resolve;
+    tx.onerror = e => reject(e.target.error);
+  });
+}
+
+// Delete all proof images for a txId (used when deleting a transaction)
+async function proofDeleteAll(txId) {
+  const all = await proofGetAll(txId);
+  await Promise.all(all.map(r => proofDelete(r.imgId)));
+}
+
+// In-memory staging area for newly-picked files before tx is saved
+const _proofStage = { buy: [], sell: [] }; // { file, objectURL }[]
+
+function proofStageClear(modal) {
+  (_proofStage[modal] || []).forEach(s => URL.revokeObjectURL(s.objectURL));
+  _proofStage[modal] = [];
+}
+
+// Commit staged files to IndexedDB under a txId, return count stored
+async function proofCommit(modal, txId) {
+  const staged = _proofStage[modal] || [];
+  await Promise.all(staged.map(s => proofStore(txId, s.file)));
+  proofStageClear(modal);
+  return staged.length;
+}
+
+// ── Proof UI helpers ────────────────────────────────────────────
+function renderProofThumbs(modal, existingRecs = []) {
+  const thumbsEl = q(`${modal}ProofThumbs`);
+  if (!thumbsEl) return;
+  thumbsEl.innerHTML = '';
+
+  // Existing saved images (from IndexedDB)
+  existingRecs.forEach(rec => {
+    const url = URL.createObjectURL(rec.blob);
+    const wrap = document.createElement('div');
+    wrap.className = 'proof-thumb';
+    wrap.innerHTML = `<img src="${url}" alt="${rec.name}"/>
+      <button class="proof-thumb-del" title="刪除">✕</button>`;
+    wrap.querySelector('img').onclick = () => openLightbox(url);
+    wrap.querySelector('.proof-thumb-del').onclick = async () => {
+      await proofDelete(rec.imgId);
+      URL.revokeObjectURL(url);
+      wrap.remove();
+    };
+    thumbsEl.appendChild(wrap);
+  });
+
+  // Staged (newly picked, not yet saved)
+  (_proofStage[modal] || []).forEach((s, idx) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'proof-thumb';
+    wrap.innerHTML = `<img src="${s.objectURL}" alt="${s.file.name}"/>
+      <button class="proof-thumb-del" title="移除">✕</button>`;
+    wrap.querySelector('img').onclick = () => openLightbox(s.objectURL);
+    wrap.querySelector('.proof-thumb-del').onclick = () => {
+      URL.revokeObjectURL(s.objectURL);
+      _proofStage[modal].splice(idx, 1);
+      wrap.remove();
+    };
+    thumbsEl.appendChild(wrap);
+  });
+}
+
+function setupProofZone(modal) {
+  const zone  = q(`${modal}ProofZone`);
+  const input = q(`${modal}ProofInput`);
+  if (!zone || !input) return;
+
+  // File input change
+  input.addEventListener('change', () => {
+    addFilesToStage(modal, Array.from(input.files));
+    input.value = ''; // reset so same file can be re-added
+  });
+
+  // Drag & Drop
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    addFilesToStage(modal, Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
+  });
+}
+
+function addFilesToStage(modal, files) {
+  if (!files.length) return;
+  if (!_proofStage[modal]) _proofStage[modal] = [];
+  files.forEach(file => {
+    _proofStage[modal].push({ file, objectURL: URL.createObjectURL(file) });
+  });
+  renderProofThumbs(modal);
+}
+
+// Lightbox
+function openLightbox(src) {
+  let lb = document.getElementById('proofLightbox');
+  if (!lb) {
+    lb = document.createElement('div');
+    lb.id = 'proofLightbox';
+    lb.className = 'proof-lightbox';
+    lb.innerHTML = `<button class="proof-lightbox-close">✕</button><img/>`;
+    lb.querySelector('.proof-lightbox-close').onclick = () => lb.remove();
+    lb.onclick = e => { if (e.target === lb) lb.remove(); };
+    document.body.appendChild(lb);
+  }
+  lb.querySelector('img').src = src;
+}
+
+
 // ── Default state ──────────────────────────────────────────────
 const DEFAULT = {
   "products": [
@@ -3809,7 +3971,7 @@ function setScopeValue(targetId, val) {
   }
 }
 
-function openModalBuy(presetProductId=null) {
+function openModalBuy(presetProductId=null, editTxId=null) {
   const sel = q('buyProductId');
   sel.innerHTML = '<option value="">— 選擇商品 —</option>' +
     DB.products.map(p=>`<option value="${p.id}"${p.id===presetProductId?' selected':''}>${esc(p.name)} (${p.type})</option>`).join('');
@@ -3821,6 +3983,13 @@ function openModalBuy(presetProductId=null) {
   setScopeValue('buyScope', 'biz');
   q('buyNote').value   = '';
   q('buyFxGroup').style.display='none';
+  q('buyEditId').value = editTxId||'';
+  // Clear staged images and load existing if editing
+  proofStageClear('buy');
+  renderProofThumbs('buy');
+  if (editTxId) {
+    proofGetAll(editTxId).then(recs => renderProofThumbs('buy', recs));
+  }
   updateBuyHint();
   openModal('mBuy');
 }
@@ -3908,9 +4077,23 @@ q('btnSaveBuy').addEventListener('click', ()=>{
     }
   }
 
-  save(); closeModal('mBuy');
-  refreshCurrentView();
-  toast(editId ? '進貨紀錄已更新' : `進貨 × ${qty} 張已記錄`, 's');
+  save();
+  // Commit proof images for each newly created transaction ID
+  const editId = q('buyEditId').value;
+  if (editId) {
+    proofCommit('buy', editId).then(() => {
+      closeModal('mBuy'); refreshCurrentView();
+      toast('進貨紀錄已更新', 's');
+    });
+  } else {
+    // Get the last pushed tx(s)
+    const lastTxs = DB.transactions.slice(scopeVal === 'both' ? -2 : -1);
+    Promise.all(lastTxs.map(t => proofCommit('buy', t.id))).then(() => {
+      closeModal('mBuy'); refreshCurrentView();
+      const qty = parseInt(q('buyQty').value)||0;
+      toast(`進貨 × ${qty} 張已記錄`, 's');
+    });
+  }
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -3938,6 +4121,12 @@ function openModalSell(presetProductId=null, editTxId=null) {
   q('ossAlert').style.display='none';
   q('sellCostPreview').style.display='none';
   q('sellKorCheck').textContent='';
+  // Clear staged images and load existing if editing
+  proofStageClear('sell');
+  renderProofThumbs('sell');
+  if (editTxId) {
+    proofGetAll(editTxId).then(recs => renderProofThumbs('sell', recs));
+  }
   updateProfitPreview();
   if (targetPid) updateSellCostPreview();
   openModal('mSell');
@@ -4077,10 +4266,21 @@ q('btnSaveSell').addEventListener('click', async ()=>{
     }
   }
 
-  save(); closeModal('mSell');
-  updateKor();
-  refreshCurrentView();
-  toast(editId ? '銷售紀錄已更新' : `銷售 × ${qty} 已記錄`, 's');
+  save();
+  const editId2 = q('sellEditId').value;
+  if (editId2) {
+    proofCommit('sell', editId2).then(() => {
+      closeModal('mSell'); updateKor(); refreshCurrentView();
+      toast('銷售紀錄已更新', 's');
+    });
+  } else {
+    const lastTxs2 = DB.transactions.slice(scopeVal === 'both' ? -2 : -1);
+    Promise.all(lastTxs2.map(t => proofCommit('sell', t.id))).then(() => {
+      closeModal('mSell'); updateKor(); refreshCurrentView();
+      const qty2 = parseInt(q('sellQty').value)||0;
+      toast(`銷售 × ${qty2} 已記錄`, 's');
+    });
+  }
 });
 
 // ── Transaction edit / delete helpers ─────────────────────────
@@ -4088,20 +4288,16 @@ function editTransaction(txId) {
   const tx = DB.transactions.find(t=>t.id===txId);
   if (!tx) return;
   if (tx.type==='BUY') {
-    q('buyEditId').value = tx.id;
-    const sel = q('buyProductId');
-    sel.innerHTML = '<option value="">— 選擇商品 —</option>' +
-      DB.products.map(p=>`<option value="${p.id}"${p.id===tx.productId?' selected':''}>${esc(p.name)} (${p.type})</option>`).join('');
+    openModalBuy(tx.productId, tx.id);
     q('buyQty').value    = tx.quantity;
     q('buyCost').value   = tx.pricePerUnitEUR;
     q('buyDate').value   = tx.date;
     q('buySource').value = tx.platform||'';
     q('buyCurrency').value = tx.currency||'EUR';
-    q('buyScope').value  = tx.scope||'biz';
+    setScopeValue('buyScope', tx.scope||'biz');
     q('buyNote').value   = tx.note||'';
     q('buyFxGroup').style.display = tx.currency&&tx.currency!=='EUR'?'flex':'none';
     updateBuyHint();
-    openModal('mBuy');
   } else if (tx.type==='SELL') {
     openModalSell(null, tx.id);
   } else {
@@ -4115,6 +4311,7 @@ function deleteTransaction(txId) {
   const p = DB.products.find(x=>x.id===tx.productId);
   confirm2(`確認刪除 ${tx.date} ${p?.name||''} 的 ${txBadge(tx.type)} 紀錄？`, ()=>{
     DB.transactions = DB.transactions.filter(t=>t.id!==txId);
+    proofDeleteAll(txId);
     save();
     updateKor();
     refreshCurrentView();
@@ -4372,6 +4569,9 @@ function toast(msg, type='s') {
 //  EVENT WIRING
 // ══════════════════════════════════════════════════════════════
 function wireEvents() {
+  setupProofZone('buy');
+  setupProofZone('sell');
+
   // Nav
   document.querySelectorAll('.nav-link[data-tab]').forEach(l=>{
     l.addEventListener('click', ()=>switchTab(l.dataset.tab));
