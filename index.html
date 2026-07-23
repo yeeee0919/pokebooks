@@ -115,6 +115,7 @@
       <div class="view" id="view-inventory">
         <div class="toolbar">
           <div class="tl">
+            <select class="sel" id="invScopeFilter"><option value="all">🏢＋👤 全部帳戶</option><option value="biz" selected>🏢 商業帳戶 (報稅用)</option><option value="priv">👤 私人帳戶 (個人收藏)</option></select>
             <input class="search-box" id="invSearch" type="search" placeholder="搜尋卡名…"/>
             <select class="sel" id="invTypeFilter"><option value="">全部類型</option><option>單卡</option><option>卡盒</option><option>鑑定卡</option><option>畫作</option><option>周邊</option></select>
             <select class="sel" id="invLangFilter"><option value="">全部語言</option><option>英文</option><option>日文</option><option>繁體中文</option><option>其他</option></select>
@@ -132,6 +133,7 @@
       <div class="view" id="view-transactions">
         <div class="toolbar">
           <div class="tl">
+            <select class="sel" id="txScopeFilter"><option value="all">🏢＋👤 全部帳戶</option><option value="biz" selected>🏢 商業交易 (計入KOR/報稅)</option><option value="priv">👤 私人交易 (不報稅)</option></select>
             <select class="sel" id="txYearFilter"><option value="2026">2026</option><option value="2025">2025</option><option value="all">全部年份</option></select>
             <select class="sel" id="txTypeFilter"><option value="">全部類型</option><option value="BUY">進貨 BUY</option><option value="SELL">銷售 SELL</option><option value="GRADE">送評 GRADE</option></select>
           </div>
@@ -322,6 +324,12 @@
         </div>
         <div class="fg" id="buyFxGroup" style="display:none"><label>匯率（→EUR/張）</label><input type="number" id="buyFx" class="finp" placeholder="0.0000" step="0.0001"/></div>
       </div>
+      <div class="fg"><label>帳戶歸屬 (計入報稅/個人) <span class="req">*</span></label>
+        <select id="buyScope" class="finp">
+          <option value="biz" selected>🏢 商業帳戶 (公司/報稅)</option>
+          <option value="priv">👤 私人帳戶 (個人收藏/不報稅)</option>
+        </select>
+      </div>
       <div class="receipt-hint" id="buySourceHint"></div>
       <div class="fg"><label>備註</label><input type="text" id="buyNote" class="finp" placeholder="賣家、備註…"/></div>
     </div>
@@ -335,8 +343,16 @@
     <div class="mhd"><h2>💰 記錄銷售</h2><button class="mclose" data-close="mSell">&times;</button></div>
     <div class="mbd">
       <input type="hidden" id="sellEditId"/>
-      <div class="fg"><label>商品 <span class="req">*</span></label>
-        <select id="sellProductId" class="finp"><option value="">— 選擇商品 —</option></select>
+      <div class="frow">
+        <div class="fg flex2"><label>商品 <span class="req">*</span></label>
+          <select id="sellProductId" class="finp"><option value="">— 選擇商品 —</option></select>
+        </div>
+        <div class="fg"><label>帳戶歸屬 <span class="req">*</span></label>
+          <select id="sellScope" class="finp">
+            <option value="biz" selected>🏢 商業帳戶 (計入KOR/報稅)</option>
+            <option value="priv">👤 私人帳戶 (個人收藏/不報稅)</option>
+          </select>
+        </div>
       </div>
       <div class="cost-preview" id="sellCostPreview" style="display:none"></div>
       <div class="frow">
