@@ -1139,8 +1139,8 @@ function openModalProduct(editId=null) {
     DB.products.filter(x=>x.id!==editId).map(x=>`<option value="${x.id}"${p?.parentId===x.id?' selected':''}>${esc(x.name)}</option>`).join('');
 
   // Initial buy hidden when editing
-  const initRow = q('pBuyDate').closest('.frow');
-  if (initRow) initRow.parentElement.style.display = isEdit ? 'none' : 'flex';
+  const initSec = q('pInitialBuySection');
+  if (initSec) initSec.style.display = isEdit ? 'none' : 'block';
   q('pBuyQty').value    = '';
   q('pBuyCost').value   = '';
   q('pBuyDate').value   = today();
