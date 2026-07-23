@@ -3997,10 +3997,11 @@ function openModalBuy(presetProductId=null, editTxId=null) {
 function updateBuyHint() {
   const src = q('buySource')?.value||'';
   const hints = {
-    nl_inperson:'建議保留：Revolut 付款截圖、聊天談價記錄',
-    tw_social:  '建議保留：LINE 對話截圖、台灣銀行轉帳記錄、匯率截圖',
-    cardmarket: '建議保留：Cardmarket 訂單確認截圖',
-    initial:    '建議保留：Cardmarket 市場趨勢截圖或 eBay Sold Price 截圖作為公平市值佐證',
+    nl_inperson:    '建議保留：Revolut 付款截圖、聊天談價記錄',
+    tw_social:      '建議保留：LINE 對話截圖、台灣銀行轉帳記錄、匯率截圖',
+    cardmarket:     '建議保留：Cardmarket 訂單確認截圖',
+    prive_storting: '💡 Privéstorting（私人卡片/資金投入公司）：建議保留個人購入憑證或對話截圖，方便報稅與查帳歸因',
+    initial:        '建議保留：Cardmarket 市場趨勢截圖或 eBay Sold Price 截圖作為公平市值佐證',
   };
   q('buySourceHint').textContent = hints[src]||'';
   q('buySourceHint').style.display = hints[src]?'block':'none';
