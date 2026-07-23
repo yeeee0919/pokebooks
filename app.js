@@ -3017,13 +3017,15 @@ function updateKor() {
 //  NAVIGATION
 // ══════════════════════════════════════════════════════════════
 const TAB_TITLES = {
-  dashboard:    '儀表板',
-  inventory:    '庫存管理',
-  transactions: '交易記錄',
-  expenses:     '費用記錄',
-  reports:      '損益報表',
-  calendar:     '報稅行事曆',
-  settings:     '設定 & 備份',
+  dashboard:        '儀表板',
+  inventory:        '庫存管理',
+  'inventory-biz':  '🏢 商業庫存 (報稅)',
+  'inventory-priv': '👤 私人庫存 (個人)',
+  transactions:     '交易記錄',
+  expenses:         '費用記錄',
+  reports:          '損益報表',
+  calendar:         '報稅行事曆',
+  settings:         '設定 & 備份',
 };
 
 function switchTab(tab) {
@@ -3039,13 +3041,15 @@ function switchTab(tab) {
 
 function renderTab(tab) {
   switch(tab) {
-    case 'dashboard':    renderDashboard();    break;
-    case 'inventory':    renderInventory();    break;
-    case 'transactions': renderTransactions(); break;
-    case 'expenses':     renderExpenses();     break;
-    case 'reports':      renderReports();      break;
-    case 'calendar':     renderCalendar();     break;
-    case 'settings':     renderSettings();     break;
+    case 'dashboard':        renderDashboard();              break;
+    case 'inventory':        renderInventoryPage('biz');     break;
+    case 'inventory-biz':   renderInventoryPage('biz');     break;
+    case 'inventory-priv':  renderInventoryPage('priv');    break;
+    case 'transactions':    renderTransactions();           break;
+    case 'expenses':        renderExpenses();               break;
+    case 'reports':         renderReports();                break;
+    case 'calendar':        renderCalendar();               break;
+    case 'settings':        renderSettings();               break;
   }
 }
 
