@@ -3560,25 +3560,28 @@ function renderInventoryPage(scopeF = 'biz') {
 
   // Wire row click to open product detail modal/panel
   wrap.querySelectorAll('tr[data-id]').forEach(tr => {
-    tr.addEventListener('click', () => openDetail(tr.dataset.id));
+    tr.addEventListener('click', () => openDetail(tr.dataset.id, scopeF));
   });
 }
 
 // ══════════════════════════════════════════════════════════════
 //  PRODUCT DETAIL PANEL
 // ══════════════════════════════════════════════════════════════
-function openDetail(productId) {
+function openDetail(productId, scope = 'all') {
   const p   = DB.products.find(x=>x.id===productId);
   if (!p) return;
-  const qty  = getQty(p.id);
-  const wacc = getWACC(p.id, '9999-99-99');
+  const qty  = getQty(p.id, scope);
+  const wacc = getWACC(p.id, '9999-99-99', scope);
 
   q('detailName').textContent = p.name;
-  q('detailMeta').textContent = [p.type, p.language, p.notes].filter(Boolean).join(' · ');
+  
+  // Set subtitle or badge for details panel scope
+  const scopeBadge = scope === 'biz' ? '🏢 商業帳戶' : (scope === 'priv' ? '👤 私人帳戶' : '🌐 所有帳戶');
+  q('detailMeta').textContent = scopeBadge + ' · ' + [p.type, p.language, p.notes].filter(Boolean).join(' · ');
 
   // Stats
-  const sold = DB.transactions.filter(t=>t.type==='SELL'&&t.productId===productId).reduce((s,t)=>s+t.quantity,0);
-  const rev  = DB.transactions.filter(t=>t.type==='SELL'&&t.productId===productId).reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
+  const sold = DB.transactions.filter(t=>t.type==='SELL'&&t.productId===productId&&(scope==='all'||(t.scope||'biz')===scope)).reduce((s,t)=>s+t.quantity,0);
+  const rev  = DB.transactions.filter(t=>t.type==='SELL'&&t.productId===productId&&(scope==='all'||(t.scope||'biz')===scope)).reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
   q('detailStats').innerHTML = `
     <div class="ds-item"><div class="ds-label">在庫</div><div class="ds-val">${qty} 張</div></div>
     <div class="ds-item"><div class="ds-label">平均成本</div><div class="ds-val gold">${eur(wacc)}</div></div>
@@ -3588,15 +3591,15 @@ function openDetail(productId) {
     <div class="ds-item"><div class="ds-label">帳面庫存值</div><div class="ds-val">${eur(wacc*qty)}</div></div>`;
 
   // Buttons
-  q('detailBtnSell').onclick  = ()=>{ closeDetail(); openModalSell(productId); };
-  q('detailBtnBuy').onclick   = ()=>{ closeDetail(); openModalBuy(productId); };
+  q('detailBtnSell').onclick  = ()=>{ closeDetail(); openModalSell(productId, null, scope); };
+  q('detailBtnBuy').onclick   = ()=>{ closeDetail(); openModalBuy(productId, null, scope); };
   q('detailBtnGrade').onclick = ()=>{ closeDetail(); openModalGrade(productId); };
   q('detailBtnEdit').onclick  = ()=>{ closeDetail(); openModalProduct(productId); };
   q('detailBtnSell').disabled = qty===0;
 
   // Tx history
   const txns = DB.transactions
-    .filter(t => t.productId===productId || (t.type==='GRADE'&&t.targetProductId===productId))
+    .filter(t => (t.productId===productId || (t.type==='GRADE'&&t.targetProductId===productId)) && (scope==='all'||(t.scope||'biz')===scope))
     .sort((a,b)=>b.date.localeCompare(a.date));
 
   q('detailTxList').innerHTML = txns.length ? `
@@ -3974,7 +3977,7 @@ function setScopeValue(targetId, val) {
   }
 }
 
-function openModalBuy(presetProductId=null, editTxId=null) {
+function openModalBuy(presetProductId=null, editTxId=null, presetScope='biz') {
   const sel = q('buyProductId');
   sel.innerHTML = '<option value="">— 選擇商品 —</option>' +
     DB.products.map(p=>`<option value="${p.id}"${p.id===presetProductId?' selected':''}>${esc(p.name)} (${p.type})</option>`).join('');
@@ -3983,7 +3986,14 @@ function openModalBuy(presetProductId=null, editTxId=null) {
   q('buyDate').value   = today();
   q('buySource').value = 'nl_inperson';
   q('buyCurrency').value='EUR';
-  setScopeValue('buyScope', 'biz');
+
+  let scopeVal = presetScope === 'all' ? 'biz' : presetScope;
+  if (editTxId) {
+    const tx = DB.transactions.find(t=>t.id===editTxId);
+    if (tx) scopeVal = tx.scope || 'biz';
+  }
+  setScopeValue('buyScope', scopeVal);
+
   q('buyNote').value   = '';
   q('buyFxGroup').style.display='none';
   q('buyEditId').value = editTxId||'';
@@ -4102,7 +4112,7 @@ q('btnSaveBuy').addEventListener('click', ()=>{
 // ══════════════════════════════════════════════════════════════
 //  MODAL — RECORD SELL
 // ══════════════════════════════════════════════════════════════
-function openModalSell(presetProductId=null, editTxId=null) {
+function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
   const editTx = editTxId ? DB.transactions.find(t=>t.id===editTxId) : null;
   q('sellEditId').value = editTxId||'';
 
@@ -4118,7 +4128,10 @@ function openModalSell(presetProductId=null, editTxId=null) {
   q('sellDate').value   = editTx ? editTx.date : today();
   q('sellPlatform').value= editTx ? (editTx.platform||'CM') : 'CM';
   q('sellFee').value    = editTx ? (editTx.fee||'') : '';
-  setScopeValue('sellScope', editTx ? (editTx.scope||'biz') : 'biz');
+  
+  let scopeVal = editTx ? (editTx.scope||'biz') : (presetScope === 'all' ? 'biz' : presetScope);
+  setScopeValue('sellScope', scopeVal);
+  
   q('sellCountry').value= 'NL';
   q('sellNote').value   = editTx ? (editTx.note||'') : '';
   q('ossAlert').style.display='none';
