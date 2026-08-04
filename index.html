@@ -380,8 +380,8 @@
         <div class="scope-btns" id="buyScopeBtns">
           <button type="button" class="scope-btn active" data-scope="biz" data-target="buyScope">🏢 商業</button>
           <button type="button" class="scope-btn" data-scope="priv" data-target="buyScope">👤 私人</button>
-          <button type="button" class="scope-btn" data-scope="both" data-target="buyScope">🏢＋👤 兩邊都要</button>
         </div>
+        <p class="field-hint" id="buyScopeHint">選「商業」會同時記一筆私人帳</p>
       </div>
       <div class="receipt-hint" id="buySourceHint"></div>
       <div class="fg"><label>備註</label><input type="text" id="buyNote" class="finp" placeholder="賣家、對話截圖描述…"/></div>
@@ -417,8 +417,8 @@
         <div class="scope-btns" id="sellScopeBtns">
           <button type="button" class="scope-btn active" data-scope="biz" data-target="sellScope">🏢 商業</button>
           <button type="button" class="scope-btn" data-scope="priv" data-target="sellScope">👤 私人</button>
-          <button type="button" class="scope-btn" data-scope="both" data-target="sellScope">🏢＋👤 兩邊都要</button>
         </div>
+        <p class="field-hint" id="sellScopeHint">選「商業」會同時記一筆私人帳</p>
       </div>
       <div class="cost-preview" id="sellCostPreview" style="display:none"></div>
       <div class="frow">
@@ -571,6 +571,9 @@
 <!-- Toast -->
 <div id="toasts"></div>
 
+<script src="scope.js"></script>
+<script src="valuation.js"></script>
+<script src="ledger.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

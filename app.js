@@ -3049,6 +3049,20 @@ const DEFAULT = {
 
 let DB = load();
 
+const Valuation = ValuationEngine.create(() => DB.transactions);
+const Ledger = TransactionLedger.create({
+  getTransactions: () => DB.transactions,
+  getProducts: () => DB.products,
+  valuation: Valuation,
+  uid,
+});
+function getQty(id, scope) { return Valuation.getQty(id, scope); }
+function getWACC(id, date, scope) { return Valuation.getWACC(id, date, scope); }
+function getInventoryCost(id, scope) { return Valuation.getInventoryCost(id, scope); }
+function computeCogs(id, date, qty, scope) { return Valuation.computeCogs(id, date, qty, scope); }
+function cogsForSell(t) { return Valuation.cogsForSell(t); }
+function txScope(t) { return ScopeLedger.normalizeScope(t, DB.transactions); }
+
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -3061,6 +3075,7 @@ function load() {
           t.scope = 'priv';
         }
       });
+      ScopeLedger.normalizeScopeOnLoad(txns);
       return {
         ...DEFAULT,
         ...parsed,
@@ -3070,7 +3085,9 @@ function load() {
       };
     }
   } catch(e) {}
-  return JSON.parse(JSON.stringify(DEFAULT));
+  const fresh = JSON.parse(JSON.stringify(DEFAULT));
+  ScopeLedger.normalizeScopeOnLoad(fresh.transactions);
+  return fresh;
 }
 
 function save() {
@@ -3096,76 +3113,15 @@ function esc(s) {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  INVENTORY ENGINE
+//  INVENTORY ENGINE — see valuation.js + scope.js
 // ══════════════════════════════════════════════════════════════
-
-/** Returns quantity in stock for a product, optionally filtered by scope ('biz'|'priv'|'all') */
-function getQty(productId, scope = 'all') {
-  let qty = 0;
-  for (const t of DB.transactions) {
-    const tScope = t.scope || 'biz'; // default to biz for legacy
-    if (scope !== 'all' && tScope !== scope) continue;
-
-    if (t.productId === productId) {
-      if (t.type === 'BUY')   qty += t.quantity;
-      if (t.type === 'SELL')  qty -= t.quantity;
-      if (t.type === 'GRADE') qty -= t.quantity; // source card used up
-    }
-    if (t.type === 'GRADE' && t.targetProductId === productId) {
-      qty += t.quantity; // graded card created
-    }
-  }
-  return Math.max(0, qty);
-}
-
-/** Weighted Average Cost per unit for a product up to (and including) date */
-// WACC cache — cleared before each render pass
-let _waccCache = new Map();
-function clearWaccCache() { _waccCache = new Map(); }
-
-function getWACC(productId, asOfDate, scope = 'all') {
-  const cacheKey = `${productId}|${asOfDate}|${scope}`;
-  if (_waccCache.has(cacheKey)) return _waccCache.get(cacheKey);
-
-  let totalCost = 0, totalQty = 0;
-  const txns = DB.transactions
-    .filter(t => t.date <= asOfDate && (scope === 'all' || (t.scope || 'biz') === scope))
-    .sort((a,b) => a.date.localeCompare(b.date));
-
-  for (const t of txns) {
-    if (t.productId === productId && t.type === 'BUY') {
-      totalCost += t.quantity * (t.pricePerUnitEUR || 0);
-      totalQty  += t.quantity;
-    }
-    if (t.type === 'GRADE' && t.targetProductId === productId) {
-      const srcWacc = getWACC(t.productId, t.date, scope);
-      const gradeFee = t.feePerUnitEUR || 0;
-      totalCost += t.quantity * (srcWacc + gradeFee);
-      totalQty  += t.quantity;
-    }
-  }
-  const result = totalQty > 0 ? totalCost / totalQty : 0;
-  _waccCache.set(cacheKey, result);
-  return result;
-}
-
-/** Total inventory cost for a product */
-function getInventoryCost(productId, scope = 'all') {
-  return getWACC(productId, '9999-99-99', scope) * getQty(productId, scope);
-}
-
-/** COGS for a SELL transaction using WAC at time of sale */
-function computeCogs(productId, date, qty, scope = 'all') {
-  const wacc = getWACC(productId, date, scope);
-  return wacc * qty;
-}
 
 // ══════════════════════════════════════════════════════════════
 //  KOR (ONLY BUSINESS TRANSACTIONS COUNT)
 // ══════════════════════════════════════════════════════════════
 function korRevenue(yr) {
   return DB.transactions
-    .filter(t => t.type === 'SELL' && inYear(t.date, yr) && (t.scope || 'biz') === 'biz')
+    .filter(t => t.type === 'SELL' && inYear(t.date, yr) && txScope(t) === 'biz')
     .reduce((s, t) => s + t.quantity * (t.pricePerUnitEUR||0), 0);
 }
 function korPct(yr) { return Math.min(korRevenue(yr)/KOR_LIMIT*100, 100); }
@@ -3265,7 +3221,7 @@ function renderDashboard() {
 
   const ySells = DB.transactions.filter(t=>t.type==='SELL'&&inYear(t.date,yr));
   const yRev   = ySells.reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0), 0);
-  const yCogs  = ySells.reduce((s,t)=>s+(t.cogsPerUnit!=null ? t.cogsPerUnit*t.quantity : computeCogs(t.productId,t.date,t.quantity)), 0);
+  const yCogs  = ySells.reduce((s,t)=>s+cogsForSell(t), 0);
   const yFees  = ySells.reduce((s,t)=>s+(t.fee||0), 0);
   const yGP    = yRev - yCogs - yFees;
   const yGPM   = yRev>0 ? yGP/yRev*100 : 0;
@@ -3332,10 +3288,10 @@ function calculateProductMetrics(productId, scopeF = 'all') {
   if (!p) return null;
 
   // Filter transactions by product & scope
-  const buyTxns  = DB.transactions.filter(t => (t.productId === productId || (t.type==='GRADE' && t.targetProductId===productId)) && t.type==='BUY' && (scopeF==='all' || (t.scope||'biz')===scopeF));
-  const sellTxns = DB.transactions.filter(t => t.productId === productId && t.type==='SELL' && (scopeF==='all' || (t.scope||'biz')===scopeF));
-  const gradeOut = DB.transactions.filter(t => t.productId === productId && t.type==='GRADE' && (scopeF==='all' || (t.scope||'biz')===scopeF));
-  const gradeIn  = DB.transactions.filter(t => t.targetProductId === productId && t.type==='GRADE' && (scopeF==='all' || (t.scope||'biz')===scopeF));
+  const buyTxns  = DB.transactions.filter(t => (t.productId === productId || (t.type==='GRADE' && t.targetProductId===productId)) && t.type==='BUY' && ScopeLedger.matchesScope(t, scopeF, DB.transactions));
+  const sellTxns = DB.transactions.filter(t => t.productId === productId && t.type==='SELL' && ScopeLedger.matchesScope(t, scopeF, DB.transactions));
+  const gradeOut = DB.transactions.filter(t => t.productId === productId && t.type==='GRADE' && ScopeLedger.matchesScope(t, scopeF, DB.transactions));
+  const gradeIn  = DB.transactions.filter(t => t.targetProductId === productId && t.type==='GRADE' && ScopeLedger.matchesScope(t, scopeF, DB.transactions));
 
   const totalBuyQty = buyTxns.reduce((s,t) => s + t.quantity, 0) + gradeIn.reduce((s,t) => s + t.quantity, 0);
   const totalSellQty = sellTxns.reduce((s,t) => s + t.quantity, 0);
@@ -3354,11 +3310,7 @@ function calculateProductMetrics(productId, scopeF = 'all') {
   // 已實現利潤 = 銷售總收入 - 銷售總COGS - 銷售手續費
   const totalRev = sellTxns.reduce((s,t) => s + t.quantity * (t.pricePerUnitEUR||0), 0);
   const totalFees = sellTxns.reduce((s,t) => s + (t.fee||0), 0);
-  // Use stored cogsPerUnit when available to avoid redundant getWACC calls
-  const totalCogs = sellTxns.reduce((s,t) => {
-    if (t.cogsPerUnit != null) return s + t.cogsPerUnit * t.quantity;
-    return s + getWACC(t.productId, t.date, scopeF) * t.quantity;
-  }, 0);
+  const totalCogs = sellTxns.reduce((s,t) => s + cogsForSell(t), 0);
   const realizedProfit = totalRev - totalCogs - totalFees;
 
   // 回本進度: Net Invested = Total Cost of ALL Buys - Total Revenue from Sells
@@ -3392,7 +3344,6 @@ function calculateProductMetrics(productId, scopeF = 'all') {
 let _invTypeFilters = { biz: '', priv: '' };
 
 function renderInventoryPage(scopeF = 'biz') {
-  clearWaccCache(); // flush WACC cache before each render
   const search  = (q(`invSearch-${scopeF}`)?.value || '').toLowerCase();
   const langF   = q(`invLangFilter-${scopeF}`)?.value || '';
   const statusF = q(`invStatusFilter-${scopeF}`)?.value || 'all';
@@ -3580,8 +3531,8 @@ function openDetail(productId, scope = 'all') {
   q('detailMeta').textContent = scopeBadge + ' · ' + [p.type, p.language, p.notes].filter(Boolean).join(' · ');
 
   // Stats
-  const sold = DB.transactions.filter(t=>t.type==='SELL'&&t.productId===productId&&(scope==='all'||(t.scope||'biz')===scope)).reduce((s,t)=>s+t.quantity,0);
-  const rev  = DB.transactions.filter(t=>t.type==='SELL'&&t.productId===productId&&(scope==='all'||(t.scope||'biz')===scope)).reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
+  const sold = DB.transactions.filter(t=>t.type==='SELL'&&t.productId===productId&&ScopeLedger.matchesScope(t, scope, DB.transactions)).reduce((s,t)=>s+t.quantity,0);
+  const rev  = DB.transactions.filter(t=>t.type==='SELL'&&t.productId===productId&&ScopeLedger.matchesScope(t, scope, DB.transactions)).reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
   q('detailStats').innerHTML = `
     <div class="ds-item"><div class="ds-label">在庫</div><div class="ds-val">${qty} 張</div></div>
     <div class="ds-item"><div class="ds-label">平均成本</div><div class="ds-val gold">${eur(wacc)}</div></div>
@@ -3598,9 +3549,7 @@ function openDetail(productId, scope = 'all') {
   q('detailBtnSell').disabled = qty===0;
 
   // Tx history
-  const txns = DB.transactions
-    .filter(t => (t.productId===productId || (t.type==='GRADE'&&t.targetProductId===productId)) && (scope==='all'||(t.scope||'biz')===scope))
-    .sort((a,b)=>b.date.localeCompare(a.date));
+  const txns = Ledger.query({ productId, scope, enrich: false });
 
   q('detailTxList').innerHTML = txns.length ? `
     <div class="tx-wrap" style="margin-top:.35rem">
@@ -3652,26 +3601,21 @@ function renderTransactions() {
   const yr   = q('txYearFilter')?.value||String(fiscalYear());
   const type = q('txTypeFilter')?.value||'';
 
-  let allTxns = [...DB.transactions];
-  if (yr !== 'all') allTxns = allTxns.filter(t=>inYear(t.date, yr));
-  if (type) allTxns = allTxns.filter(t=>t.type===type);
-  allTxns.sort((a,b)=>b.date.localeCompare(a.date));
-
-  renderTxTableForScope('priv', allTxns.filter(t => (t.scope||'biz') === 'priv'));
-  renderTxTableForScope('biz',  allTxns.filter(t => (t.scope||'biz') === 'biz'));
+  renderTxTableForScope('priv', Ledger.query({ scope: 'priv', year: yr, type: type || undefined }));
+  renderTxTableForScope('biz',  Ledger.query({ scope: 'biz',  year: yr, type: type || undefined }));
 }
 
-function renderTxTableForScope(scopeKey, txns) {
-  const rev     = txns.filter(t=>t.type==='SELL').reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
-  const buyCost = txns.filter(t=>t.type==='BUY').reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
+function renderTxTableForScope(scopeKey, rows) {
+  const summary = Ledger.scopeSummary(rows);
+  const { count, rev, buyCost } = summary;
 
   const sumEl = q(`txSummary-${scopeKey}`);
-  if (sumEl) sumEl.innerHTML = `<strong>${txns.length}</strong> 筆 · 銷 <strong>${eur(rev)}</strong> · 進 <strong>${eur(buyCost)}</strong>`;
+  if (sumEl) sumEl.innerHTML = `<strong>${count}</strong> 筆 · 銷 <strong>${eur(rev)}</strong> · 進 <strong>${eur(buyCost)}</strong>`;
 
   const container = q(`txList-${scopeKey}`);
   if (!container) return;
 
-  if (!txns.length) {
+  if (!rows.length) {
     container.innerHTML = `<div class="empty" style="padding:1.5rem"><div class="empty-ttl" style="font-size:.8rem">無交易紀錄</div></div>`;
     return;
   }
@@ -3682,24 +3626,18 @@ function renderTxTableForScope(scopeKey, txns) {
       <th>日期</th><th>類型</th><th>商品</th>
       <th>數量</th><th>金額</th><th>COGS</th><th>毛利</th><th>操作</th>
     </tr></thead>
-    <tbody>${txns.map(t=>{
-      const p    = DB.products.find(x=>x.id===t.productId);
-      const name = p?.name||'已刪除';
-      const tot  = t.quantity*(t.pricePerUnitEUR||0);
-      const isSell = t.type==='SELL';
-      const cogs = isSell ? (t.cogsPerUnit!=null ? t.cogsPerUnit*t.quantity : computeCogs(t.productId,t.date,t.quantity, scopeKey)) : null;
-      const fee  = isSell ? (t.fee||0) : null;
-      const gp   = isSell ? tot - (cogs||0) - (fee||0) : null;
-      const gpCls= gp!=null ? (gp>=0?'sell':'buy') : '';
+    <tbody>${rows.map(r=>{
+      const t = r.tx;
+      const gpCls = r.grossProfit != null ? (r.grossProfit >= 0 ? 'sell' : 'buy') : '';
       return `<tr>
         <td style="text-align:center"><input type="checkbox" class="chk-tx" data-id="${t.id}"/></td>
         <td class="mono">${t.date.slice(5)}</td>
         <td>${txBadge(t.type)}</td>
-        <td style="font-weight:600;color:var(--t1);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(name)}">${esc(name)}</td>
+        <td style="font-weight:600;color:var(--t1);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.productName)}">${esc(r.productName)}</td>
         <td class="mono">${t.quantity}</td>
-        <td class="amount ${isSell?'sell':'buy'}">${isSell?'':'-'}${eur(tot)}</td>
-        <td class="mono" style="color:var(--t3)">${cogs!=null?eur(cogs):'—'}</td>
-        <td class="amount ${gpCls}">${gp!=null?eur(gp):'—'}</td>
+        <td class="amount ${r.isSell?'sell':'buy'}">${r.isSell?'':'-'}${eur(r.total)}</td>
+        <td class="mono" style="color:var(--t3)">${r.cogs!=null?eur(r.cogs):'—'}</td>
+        <td class="amount ${gpCls}">${r.grossProfit!=null?eur(r.grossProfit):'—'}</td>
         <td>
           <button class="link-btn btn-edit-tx" data-id="${t.id}" style="margin-right:.3rem">✏️</button>
           <button class="link-btn btn-del-tx" data-id="${t.id}" style="color:var(--red)">🗑️</button>
@@ -3787,11 +3725,11 @@ function renderExpenses() {
 function renderReports() {
   const yr = Number(q('rptYear')?.value||fiscalYear());
   // Business (commercial) only — private transactions excluded from P&L
-  const ySells = DB.transactions.filter(t => t.type==='SELL' && inYear(t.date,yr) && (t.scope||'biz')==='biz');
+  const ySells = DB.transactions.filter(t => t.type==='SELL' && inYear(t.date,yr) && txScope(t)==='biz');
   const yExp   = DB.expenses.filter(e => inYear(e.date,yr) && !e.isPrivate);
 
   const rev    = ySells.reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
-  const cogs   = ySells.reduce((s,t)=>s+(t.cogsPerUnit!=null?t.cogsPerUnit*t.quantity:computeCogs(t.productId,t.date,t.quantity,'biz')),0);
+  const cogs   = ySells.reduce((s,t)=>s+cogsForSell(t),0);
   const fees   = ySells.reduce((s,t)=>s+(t.fee||0),0);
   const grossP = rev - cogs - fees;
 
@@ -3942,10 +3880,8 @@ q('btnSaveProduct').addEventListener('click', ()=>{
     const qty  = parseInt(q('pBuyQty').value)||0;
     const cost = parseFloat(q('pBuyCost').value);
     if (qty>0 && !isNaN(cost)) {
-      DB.transactions.push({
-        id:             uid(),
+      Ledger.recordInitialBuy({
         productId:      productData.id,
-        type:           'BUY',
         date:           q('pBuyDate').value||today(),
         quantity:       qty,
         pricePerUnitEUR:cost,
@@ -3958,7 +3894,7 @@ q('btnSaveProduct').addEventListener('click', ()=>{
 
   save();
   closeModal('mProduct');
-  renderInventory();
+  refreshCurrentView();
   toast(isEdit?'商品已更新':'商品已新增','s');
 });
 
@@ -3989,8 +3925,8 @@ function openModalBuy(presetProductId=null, editTxId=null, presetScope='biz') {
 
   let scopeVal = presetScope === 'all' ? 'biz' : presetScope;
   if (editTxId) {
-    const tx = DB.transactions.find(t=>t.id===editTxId);
-    if (tx) scopeVal = tx.scope || 'biz';
+    const tx = Ledger.findById(editTxId);
+    if (tx) scopeVal = ScopeLedger.uiScopeForTx(tx);
   }
   setScopeValue('buyScope', scopeVal);
 
@@ -4032,92 +3968,40 @@ q('btnSaveBuy').addEventListener('click', ()=>{
   if (!date) return toast('請選擇日期','e');
 
   const scopeVal = q('buyScope').value || 'biz';
-
-  if (editId) {
-    const idx = DB.transactions.findIndex(t=>t.id===editId);
-    if (idx>=0) {
-      DB.transactions[idx] = {
-        ...DB.transactions[idx],
-        productId,
-        date,
-        quantity: qty,
-        pricePerUnitEUR: cost,
-        platform: q('buySource').value||'',
-        currency: q('buyCurrency').value,
-        scope: scopeVal === 'both' ? 'biz' : scopeVal,
-        note: q('buyNote').value.trim(),
-      };
-    }
-  } else {
-    if (scopeVal === 'both') {
-      // Split or create buy records for BOTH business and private
-      DB.transactions.push({
-        id:             uid(),
-        productId,
-        type:           'BUY',
-        date,
-        quantity:       qty,
-        pricePerUnitEUR:cost,
-        platform:       q('buySource').value||'',
-        currency:       q('buyCurrency').value,
-        scope:          'biz',
-        note:           (q('buyNote').value.trim() + ' (商業＋私人同時進貨)').trim(),
-      });
-      DB.transactions.push({
-        id:             uid(),
-        productId,
-        type:           'BUY',
-        date,
-        quantity:       qty,
-        pricePerUnitEUR:cost,
-        platform:       q('buySource').value||'',
-        currency:       q('buyCurrency').value,
-        scope:          'priv',
-        note:           (q('buyNote').value.trim() + ' (商業＋私人同時進貨)').trim(),
-      });
-    } else {
-      DB.transactions.push({
-        id:             uid(),
-        productId,
-        type:           'BUY',
-        date,
-        quantity:       qty,
-        pricePerUnitEUR:cost,
-        platform:       q('buySource').value||'',
-        currency:       q('buyCurrency').value,
-        scope:          scopeVal,
-        note:           q('buyNote').value.trim(),
-      });
-    }
-  }
+  const { ids } = Ledger.recordBuy({
+    scopeInput: scopeVal,
+    editId: editId || null,
+    fields: {
+      productId,
+      date,
+      quantity: qty,
+      pricePerUnitEUR: cost,
+      platform: q('buySource').value||'',
+      currency: q('buyCurrency').value,
+      note: q('buyNote').value.trim(),
+    },
+  });
 
   save();
-  // Commit proof images for each newly created transaction ID
-  if (editId) {
-    proofCommit('buy', editId).then(() => {
-      closeModal('mBuy'); refreshCurrentView();
-      toast('進貨紀錄已更新', 's');
-    });
-  } else {
-    // Get the last pushed tx(s)
-    const lastTxs = DB.transactions.slice(scopeVal === 'both' ? -2 : -1);
-    Promise.all(lastTxs.map(t => proofCommit('buy', t.id))).then(() => {
-      closeModal('mBuy'); refreshCurrentView();
-      const qty = parseInt(q('buyQty').value)||0;
-      toast(`進貨 × ${qty} 張已記錄`, 's');
-    });
-  }
+  Promise.all(ids.map(id => proofCommit('buy', id))).then(() => {
+    closeModal('mBuy');
+    refreshCurrentView();
+    toast(editId ? '進貨紀錄已更新' : `進貨 × ${qty} 張已記錄`, 's');
+  });
 });
 
 // ══════════════════════════════════════════════════════════════
 //  MODAL — RECORD SELL
 // ══════════════════════════════════════════════════════════════
 function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
-  const editTx = editTxId ? DB.transactions.find(t=>t.id===editTxId) : null;
+  const editTx = editTxId ? Ledger.findById(editTxId) : null;
   q('sellEditId').value = editTxId||'';
 
+  let scopeVal = editTx ? ScopeLedger.uiScopeForTx(editTx) : (presetScope === 'all' ? 'biz' : presetScope);
+  setScopeValue('sellScope', scopeVal);
+
   const sel = q('sellProductId');
-  const inStock = DB.products.filter(p=>getQty(p.id)>0 || (editTx && p.id===editTx.productId));
+  const inStock = DB.products.filter(p=>getQty(p.id, scopeVal)>0 || (editTx && p.id===editTx.productId));
   const targetPid = editTx ? editTx.productId : presetProductId;
 
   sel.innerHTML = '<option value="">— 選擇商品 —</option>' +
@@ -4128,9 +4012,6 @@ function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
   q('sellDate').value   = editTx ? editTx.date : today();
   q('sellPlatform').value= editTx ? (editTx.platform||'CM') : 'CM';
   q('sellFee').value    = editTx ? (editTx.fee||'') : '';
-  
-  let scopeVal = editTx ? (editTx.scope||'biz') : (presetScope === 'all' ? 'biz' : presetScope);
-  setScopeValue('sellScope', scopeVal);
   
   q('sellCountry').value= 'NL';
   q('sellNote').value   = editTx ? (editTx.note||'') : '';
@@ -4148,14 +4029,19 @@ function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
   openModal('mSell');
 }
 
+function sellFormScope() {
+  return q('sellScope')?.value || 'biz';
+}
+
 function updateSellCostPreview() {
   const productId = q('sellProductId').value;
   if (!productId) { q('sellCostPreview').style.display='none'; return; }
   const qty  = parseInt(q('sellQty').value)||1;
-  const wacc = getWACC(productId, today());
-  const avail= getQty(productId);
+  const scope = sellFormScope();
+  const wacc = getWACC(productId, today(), scope);
+  const avail= getQty(productId, scope);
   q('sellCostPreview').style.display='block';
-  q('sellCostPreview').innerHTML = `加權平均成本 <strong>${eur(wacc)}/張</strong>（FIFO WAC） · 在庫 <strong>${avail}</strong> 張`;
+  q('sellCostPreview').innerHTML = `加權平均成本 <strong>${eur(wacc)}/張</strong>（FIFO WAC） · 在庫 <strong>${avail}</strong> 張 · ${scope==='priv'?'👤 私人':'🏢 商業'}`;
   updateProfitPreview();
   updateKorCheck();
 }
@@ -4165,8 +4051,9 @@ function updateProfitPreview() {
   const qty   = parseInt(q('sellQty').value)||0;
   const price = parseFloat(q('sellPrice').value)||0;
   const fee   = parseFloat(q('sellFee').value)||0;
+  const scope = sellFormScope();
   const rev   = price * qty;
-  const cogs  = productId&&qty ? computeCogs(productId, today(), qty) : 0;
+  const cogs  = productId&&qty ? computeCogs(productId, today(), qty, scope) : 0;
   const gp    = rev - fee - cogs;
   q('pb-rev').textContent  = eur(rev);
   q('pb-fee').textContent  = eur(fee);
@@ -4198,110 +4085,52 @@ q('btnSaveSell').addEventListener('click', async ()=>{
   const qty   = parseInt(q('sellQty').value);
   const price = parseFloat(q('sellPrice').value);
   const date  = q('sellDate').value;
+  const editId = q('sellEditId').value;
   if (!productId) return toast('請選擇商品','e');
   if (!qty||qty<1) return toast('請輸入數量','e');
   if (isNaN(price)||price<0) return toast('請輸入售價','e');
   if (!date) return toast('請選擇日期','e');
 
-  const avail = getQty(productId);
-  if (qty>avail) return toast(`庫存不足！目前在庫 ${avail} 張`,'e');
+  const scopeVal = q('sellScope').value || 'biz';
+  const fee      = parseFloat(q('sellFee').value)||0;
 
-  const newRev = korRevenue(fiscalYear()) + price*qty;
-  if (newRev > KOR_LIMIT) {
-    const ok = await confirm2Async(`🚨 KOR 超限警告\n\n此筆銷售後年度營業額將達 ${eur(newRev)}，超過 €20,000 KOR 上限。\n\n請確認已諮詢會計師後再繼續。`, '仍要記錄');
-    if (!ok) return;
-  }
+  const stock = Ledger.checkSellStock(productId, scopeVal, qty);
+  if (!stock.ok) return toast(`庫存不足！目前在庫 ${stock.avail} 張（${stock.scope==='priv'?'私人':'商業'}）`,'e');
 
-  const editId     = q('sellEditId').value;
-  const scopeVal   = q('sellScope').value || 'biz';
-  const fee        = parseFloat(q('sellFee').value)||0;
-
-  if (editId) {
-    const scope = scopeVal === 'both' ? 'biz' : scopeVal;
-    const wacc  = getWACC(productId, date, scope);
-    const idx   = DB.transactions.findIndex(t=>t.id===editId);
-    if (idx>=0) {
-      DB.transactions[idx] = {
-        ...DB.transactions[idx],
-        productId,
-        date,
-        quantity: qty,
-        pricePerUnitEUR: price,
-        fee,
-        cogsPerUnit: wacc,
-        scope,
-        platform: q('sellPlatform').value||'',
-        note: q('sellNote').value.trim(),
-      };
-    }
-  } else {
-    if (scopeVal === 'both') {
-      const waccBiz  = getWACC(productId, date, 'biz');
-      const waccPriv = getWACC(productId, date, 'priv');
-      DB.transactions.push({
-        id:             uid(),
-        productId,
-        type:           'SELL',
-        date,
-        quantity:       qty,
-        pricePerUnitEUR:price,
-        fee:            fee / 2,
-        cogsPerUnit:    waccBiz,
-        scope:          'biz',
-        platform:       q('sellPlatform').value||'',
-        note:           (q('sellNote').value.trim() + ' (商業＋私人同時銷售)').trim(),
-      });
-      DB.transactions.push({
-        id:             uid(),
-        productId,
-        type:           'SELL',
-        date,
-        quantity:       qty,
-        pricePerUnitEUR:price,
-        fee:            fee / 2,
-        cogsPerUnit:    waccPriv,
-        scope:          'priv',
-        platform:       q('sellPlatform').value||'',
-        note:           (q('sellNote').value.trim() + ' (商業＋私人同時銷售)').trim(),
-      });
-    } else {
-      const wacc = getWACC(productId, date, scopeVal);
-      DB.transactions.push({
-        id:             uid(),
-        productId,
-        type:           'SELL',
-        date,
-        quantity:       qty,
-        pricePerUnitEUR:price,
-        fee,
-        cogsPerUnit:    wacc,
-        scope:          scopeVal,
-        platform:       q('sellPlatform').value||'',
-        note:           q('sellNote').value.trim(),
-      });
+  if (scopeVal === 'biz' || (editId && txScope(Ledger.findById(editId)) === 'biz')) {
+    const newRev = korRevenue(fiscalYear()) + price * qty;
+    if (newRev > KOR_LIMIT) {
+      const ok = await confirm2Async(`🚨 KOR 超限警告\n\n此筆銷售後年度營業額將達 ${eur(newRev)}，超過 €20,000 KOR 上限。\n\n請確認已諮詢會計師後再繼續。`, '仍要記錄');
+      if (!ok) return;
     }
   }
+
+  const { ids } = Ledger.recordSell({
+    scopeInput: scopeVal,
+    editId: editId || null,
+    fee,
+    fields: {
+      productId,
+      date,
+      quantity: qty,
+      pricePerUnitEUR: price,
+      platform: q('sellPlatform').value||'',
+      note: q('sellNote').value.trim(),
+    },
+  });
 
   save();
-  const editId2 = q('sellEditId').value;
-  if (editId2) {
-    proofCommit('sell', editId2).then(() => {
-      closeModal('mSell'); updateKor(); refreshCurrentView();
-      toast('銷售紀錄已更新', 's');
-    });
-  } else {
-    const lastTxs2 = DB.transactions.slice(scopeVal === 'both' ? -2 : -1);
-    Promise.all(lastTxs2.map(t => proofCommit('sell', t.id))).then(() => {
-      closeModal('mSell'); updateKor(); refreshCurrentView();
-      const qty2 = parseInt(q('sellQty').value)||0;
-      toast(`銷售 × ${qty2} 已記錄`, 's');
-    });
-  }
+  Promise.all(ids.map(id => proofCommit('sell', id))).then(() => {
+    closeModal('mSell');
+    updateKor();
+    refreshCurrentView();
+    toast(editId ? '銷售紀錄已更新' : `銷售 × ${qty} 已記錄`, 's');
+  });
 });
 
 // ── Transaction edit / delete helpers ─────────────────────────
 function editTransaction(txId) {
-  const tx = DB.transactions.find(t=>t.id===txId);
+  const tx = Ledger.findById(txId);
   if (!tx) return;
   if (tx.type==='BUY') {
     openModalBuy(tx.productId, tx.id);
@@ -4310,7 +4139,7 @@ function editTransaction(txId) {
     q('buyDate').value   = tx.date;
     q('buySource').value = tx.platform||'';
     q('buyCurrency').value = tx.currency||'EUR';
-    setScopeValue('buyScope', tx.scope||'biz');
+    setScopeValue('buyScope', ScopeLedger.uiScopeForTx(tx));
     q('buyNote').value   = tx.note||'';
     q('buyFxGroup').style.display = tx.currency&&tx.currency!=='EUR'?'flex':'none';
     updateBuyHint();
@@ -4322,12 +4151,13 @@ function editTransaction(txId) {
 }
 
 function deleteTransaction(txId) {
-  const tx = DB.transactions.find(t=>t.id===txId);
+  const tx = Ledger.findById(txId);
   if (!tx) return;
   const p = DB.products.find(x=>x.id===tx.productId);
-  confirm2(`確認刪除 ${tx.date} ${p?.name||''} 的 ${txBadge(tx.type)} 紀錄？`, ()=>{
-    DB.transactions = DB.transactions.filter(t=>t.id!==txId);
-    proofDeleteAll(txId);
+  const idsToDelete = Ledger.resolveDeleteIds(txId);
+  confirm2(`確認刪除 ${tx.date} ${p?.name||''} 的 ${txBadge(tx.type)} 紀錄？${idsToDelete.length>1?'（含配對的私人帳）':''}`, ()=>{
+    idsToDelete.forEach(id => proofDeleteAll(id));
+    Ledger.deleteByIds(idsToDelete);
     save();
     updateKor();
     refreshCurrentView();
@@ -4374,17 +4204,14 @@ function applyBulkEdit() {
   if (changePrice && (isNaN(newPrice) || newPrice < 0)) return toast('請輸入有效單價', 'e');
   if (changeFee && (isNaN(newFee) || newFee < 0)) return toast('請輸入有效手續費', 'e');
 
-  let updatedCount = 0;
-  DB.transactions.forEach(t => {
-    if (_selectedTxIds.has(t.id)) {
-      if (changeDate)     t.date = newDate;
-      if (changePlatform) t.platform = newPlatform;
-      if (changePrice)    t.pricePerUnitEUR = newPrice;
-      if (changeFee && t.type === 'SELL') t.fee = newFee;
-      if (changeNote)     t.note = newNote;
-      updatedCount++;
-    }
-  });
+  const patch = {};
+  if (changeDate)     patch.date = newDate;
+  if (changePlatform) patch.platform = newPlatform;
+  if (changePrice)    patch.pricePerUnitEUR = newPrice;
+  if (changeFee)      patch.fee = newFee;
+  if (changeNote)     patch.note = newNote;
+
+  const updatedCount = Ledger.bulkUpdate([..._selectedTxIds], patch);
 
   save();
   closeModal('mBulkEdit');
@@ -4397,11 +4224,14 @@ function bulkDeleteTransactions() {
   if (_selectedTxIds.size === 0) return toast('請先勾選欲刪除的交易', 'w');
   const count = _selectedTxIds.size;
   confirm2(`確認批次刪除已選取的 ${count} 筆交易紀錄？刪除後無法復原。`, ()=>{
-    DB.transactions = DB.transactions.filter(t => !_selectedTxIds.has(t.id));
+    const idsToDelete = Ledger.resolveBulkDeleteIds([..._selectedTxIds]);
+    idsToDelete.forEach(id => proofDeleteAll(id));
+    Ledger.deleteByIds(idsToDelete);
+    _selectedTxIds.clear();
     save();
     updateKor();
     refreshCurrentView();
-    toast(`已批次刪除 ${count} 筆交易`, 's');
+    toast(`已批次刪除 ${idsToDelete.length} 筆交易`, 's');
   });
 }
 
@@ -4452,14 +4282,17 @@ q('btnSaveGrade').addEventListener('click', ()=>{
   const avail = getQty(fromId);
   if (qty>avail) return toast(`庫存不足！原始卡在庫 ${avail} 張`,'e');
 
-  DB.transactions.push({
-    id:              uid(),
+  const gradeScope = getQty(fromId, 'biz') >= qty ? 'biz'
+    : getQty(fromId, 'priv') >= qty ? 'priv'
+    : ScopeLedger.scopeForTab(currentTab()) === 'priv' ? 'priv' : 'biz';
+
+  Ledger.recordGrade({
     productId:       fromId,
     targetProductId: toId,
-    type:            'GRADE',
     date,
     quantity:        qty,
-    pricePerUnitEUR: getWACC(fromId, date), // cost basis of raw card
+    scope:           gradeScope,
+    pricePerUnitEUR: getWACC(fromId, date, gradeScope),
     feePerUnitEUR:   fee,
     platform:        service,
     gradingService:  service,
@@ -4603,6 +4436,17 @@ function wireEvents() {
       if (targetId === 'sellScope') {
         updateProfitPreview();
         updateKorCheck();
+        // Refresh in-stock product list for selected scope
+        const editId = q('sellEditId')?.value;
+        const editTx = editId ? Ledger.findById(editId) : null;
+        const inStock = DB.products.filter(p => getQty(p.id, scope) > 0 || (editTx && p.id === editTx.productId));
+        const sel = q('sellProductId');
+        const cur = sel?.value;
+        if (sel) {
+          sel.innerHTML = '<option value="">— 選擇商品 —</option>' +
+            inStock.map(p => `<option value="${p.id}"${p.id === cur ? ' selected' : ''}>${esc(p.name)} (${p.type})</option>`).join('');
+        }
+        updateSellCostPreview();
       }
     });
   });
