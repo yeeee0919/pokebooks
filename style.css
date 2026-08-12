@@ -1033,9 +1033,10 @@ input, select { font-family: var(--font); }
   border-radius: var(--r2); padding: .7rem .85rem; margin-bottom: .85rem;
 }
 .docs-stats {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: .65rem; margin-bottom: .85rem;
 }
+.docs-ev-count { color: var(--t3); font-size: .68rem; }
 .docs-stats > div {
   background: var(--s2); border: 1px solid var(--b1);
   border-radius: var(--r2); padding: .65rem .75rem;

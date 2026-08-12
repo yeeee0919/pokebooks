@@ -81,8 +81,16 @@ function proofStageClear(modal) {
 
 // Commit staged files to IndexedDB under a txId, return count stored
 async function proofCommit(modal, txId) {
-  const staged = _proofStage[modal] || [];
-  await Promise.all(staged.map(s => proofStore(txId, s.file)));
+  return proofCommitToIds(modal, [txId]);
+}
+
+/** Commit the same staged proofs to one or more transaction IDs (biz/priv pair). */
+async function proofCommitToIds(modal, ids) {
+  const staged = (_proofStage[modal] || []).slice();
+  const uniqueIds = [...new Set((ids || []).filter(Boolean))];
+  for (const id of uniqueIds) {
+    await Promise.all(staged.map(s => proofStore(id, s.file)));
+  }
   proofStageClear(modal);
   return staged.length;
 }
@@ -4187,7 +4195,7 @@ q('btnSaveProduct').addEventListener('click', ()=>{
       },
     });
     save();
-    Promise.all(ids.map(id => proofCommit('product', id))).then(() => {
+    proofCommitToIds('product', ids).then(() => {
       if (btn) btn.dataset.busy = '0';
       closeModal('mProduct');
       refreshCurrentView();
@@ -4307,7 +4315,7 @@ q('btnSaveBuy').addEventListener('click', ()=>{
   });
 
   save();
-  Promise.all(ids.map(id => proofCommit('buy', id))).then(() => {
+  proofCommitToIds('buy', ids).then(() => {
     closeModal('mBuy');
     refreshCurrentView();
     toast(editId ? '進貨紀錄已更新' : `進貨 × ${qty} 張已記錄`, 's');
@@ -4444,7 +4452,7 @@ q('btnSaveSell').addEventListener('click', async ()=>{
   });
 
   save();
-  Promise.all(ids.map(id => proofCommit('sell', id))).then(() => {
+  proofCommitToIds('sell', ids).then(() => {
     closeModal('mSell');
     updateKor();
     refreshCurrentView();
@@ -4685,9 +4693,42 @@ function productNameDetail(p) {
   return parts.join(' / ');
 }
 
-function suggestedEvidenceFilename(row) {
+function suggestedEvidenceFilename(row, index = 1) {
   const safeSku = String(row.sku || 'SKU').replace(/[^\w\-]+/g, '_');
-  return `${row.transfer_date || today()}_${safeSku}_Cardmarket_01.png`;
+  const n = String(index).padStart(2, '0');
+  return `${row.transfer_date || today()}_${safeSku}_${n}.png`;
+}
+
+function guessProofExt(name, mime) {
+  const fromName = (name || '').match(/(\.[a-z0-9]{2,5})$/i);
+  if (fromName) return fromName[1].toLowerCase();
+  if (mime === 'image/jpeg') return '.jpg';
+  if (mime === 'image/webp') return '.webp';
+  if (mime === 'image/heic') return '.heic';
+  if (mime === 'image/gif') return '.gif';
+  return '.png';
+}
+
+async function collectProofsForOpeningTx(txId) {
+  const tx = DB.transactions.find(t => t.id === txId);
+  const ids = [txId];
+  if (tx?.pairId) {
+    const paired = ScopeLedger.findPairedTx(tx, DB.transactions);
+    if (paired?.id) ids.push(paired.id);
+  }
+  const seen = new Set();
+  const out = [];
+  for (const id of ids) {
+    try {
+      const proofs = await proofGetAll(id);
+      for (const p of proofs || []) {
+        if (!p?.imgId || seen.has(p.imgId)) continue;
+        seen.add(p.imgId);
+        out.push(p);
+      }
+    } catch (e) {}
+  }
+  return out;
 }
 
 function getOpeningBuyTransactions() {
@@ -4700,28 +4741,39 @@ function getOpeningBuyTransactions() {
 async function buildOpeningInventoryRows() {
   const buys = getOpeningBuyTransactions();
   const rows = [];
+  const evidenceFiles = []; // { path, blob, txId, name }
   for (const t of buys) {
     const p = DB.products.find(x => x.id === t.productId);
     const qty = Number(t.quantity) || 0;
     const unit = Number(t.pricePerUnitEUR) || 0;
     const sku = (t.productId || '').slice(0, 8).toUpperCase();
-    let evidenceNames = [];
-    try {
-      const proofs = await proofGetAll(t.id);
-      evidenceNames = (proofs || []).map(r => r.name).filter(Boolean);
-      // Paired priv proofs are not used — opening must be biz-only
-    } catch (e) {}
+    const transferDate = t.date || DB.settings.korStart || today();
+    const proofs = await collectProofsForOpeningTx(t.id);
+    const exportNames = [];
+    proofs.forEach((proof, i) => {
+      const ext = guessProofExt(proof.name, proof.type);
+      const exportName = `${transferDate}_${sku}_${String(i + 1).padStart(2, '0')}${ext}`;
+      const path = `evidence/${exportName}`;
+      exportNames.push(exportName);
+      evidenceFiles.push({
+        path,
+        blob: proof.blob,
+        txId: t.id,
+        originalName: proof.name || exportName,
+      });
+    });
     const row = {
       sku,
       productId: t.productId,
       txId: t.id,
       name_detail: productNameDetail(p),
       qty,
-      transfer_date: t.date || DB.settings.korStart || today(),
+      transfer_date: transferDate,
       market_value_eur: unit,
       line_total_eur: Math.round(qty * unit * 100) / 100,
-      evidence_filename: evidenceNames.join(' | ') || '',
-      evidence_source: evidenceNames.length ? '已上傳佐證截圖' : '待補：Cardmarket / eBay Sold',
+      evidence_filename: exportNames.join(' | ') || '',
+      evidence_count: exportNames.length,
+      evidence_source: exportNames.length ? '已上傳佐證截圖（見 ZIP evidence/）' : '待補：Cardmarket / eBay Sold',
       valuation_basis: '開業日公允市價（期初 inbreng）',
       ledger_scope: 'biz',
       entry_type: 'OPENING_INBRENG',
@@ -4729,10 +4781,10 @@ async function buildOpeningInventoryRows() {
       ib_cost_basis: true,
       notes: t.note || '',
     };
-    if (!row.evidence_filename) row.evidence_filename = suggestedEvidenceFilename(row);
+    if (!row.evidence_filename) row.evidence_filename = suggestedEvidenceFilename(row, 1);
     rows.push(row);
   }
-  return rows;
+  return { rows, evidenceFiles };
 }
 
 function findOpeningInventoryDoc() {
@@ -4743,7 +4795,7 @@ async function archiveOpeningInventoryDocument({ force = false, silent = false, 
   const existing = findOpeningInventoryDoc();
   if (existing && !force) return existing;
 
-  const rows = await buildOpeningInventoryRows();
+  const { rows, evidenceFiles } = await buildOpeningInventoryRows();
   if (!rows.length) {
     if (!silent) toast('沒有可封存的開業轉入。請到「商業庫存」新增進貨，來源選「期初庫存」或「來自私人」。', 'w');
     return null;
@@ -4751,6 +4803,7 @@ async function archiveOpeningInventoryDocument({ force = false, silent = false, 
 
   const totalQty = rows.reduce((s, r) => s + (r.qty || 0), 0);
   const totalValue = rows.reduce((s, r) => s + (r.line_total_eur || 0), 0);
+  const proofCount = evidenceFiles.length;
   const transferDate = DB.settings.korStart || rows[0].transfer_date || today();
   const doc = {
     id: existing?.id || uid(),
@@ -4768,11 +4821,12 @@ async function archiveOpeningInventoryDocument({ force = false, silent = false, 
       fiscalYear: fiscalYear(),
     },
     disclaimer:
-      '本文件為開業日私人資產轉入企業之存貨證明與 IB 成本基礎。非銷售、不計入 KOR 營業額（omzet）。',
+      '本文件為開業日私人資產轉入企業之存貨證明與 IB 成本基礎。非銷售、不計入 KOR 營業額（omzet）。憑證圖片隨 ZIP 的 evidence/ 資料夾一併匯出。',
     totals: {
       lineCount: rows.length,
       qty: totalQty,
       marketValueEur: Math.round(totalValue * 100) / 100,
+      evidenceCount: proofCount,
     },
     rows,
   };
@@ -4783,11 +4837,14 @@ async function archiveOpeningInventoryDocument({ force = false, silent = false, 
   else docs.unshift(doc);
   save();
 
-  if (download) downloadOpeningInventoryFiles(doc);
-  await writeOpeningInventoryToCloud(doc);
+  if (download) await downloadOpeningInventoryFiles(doc, evidenceFiles);
+  await writeOpeningInventoryToCloud(doc, evidenceFiles);
 
   if (!silent) {
-    toast(`期初庫存清單已封存：${doc.totals.lineCount} 項、合計 ${eur(doc.totals.marketValueEur)}`, 's');
+    toast(
+      `期初庫存已封存：${doc.totals.lineCount} 項、佐證 ${proofCount} 張圖、合計 ${eur(doc.totals.marketValueEur)}`,
+      's'
+    );
   }
   return doc;
 }
@@ -4795,7 +4852,7 @@ async function archiveOpeningInventoryDocument({ force = false, silent = false, 
 function openingInventoryCsv(doc) {
   const headers = [
     'sku', 'name_detail', 'qty', 'transfer_date', 'market_value_eur', 'line_total_eur',
-    'evidence_filename', 'evidence_source', 'valuation_basis', 'ledger_scope',
+    'evidence_filename', 'evidence_count', 'evidence_source', 'valuation_basis', 'ledger_scope',
     'entry_type', 'kor_relevant', 'ib_cost_basis', 'notes', 'productId', 'txId',
   ];
   const escape = (v) => {
@@ -4812,6 +4869,7 @@ function openingInventoryCsv(doc) {
   lines.push(`# transfer_date,${escape(doc.transferDate || '')}`);
   lines.push(`# total_qty,${doc.totals?.qty ?? 0}`);
   lines.push(`# total_market_value_eur,${doc.totals?.marketValueEur ?? 0}`);
+  lines.push(`# evidence_count,${doc.totals?.evidenceCount ?? 0}`);
   lines.push(`# kor_relevant,false`);
   lines.push(`# disclaimer,${escape(doc.disclaimer || '')}`);
   return lines.join('\n');
@@ -4827,18 +4885,84 @@ function downloadTextFile(filename, text, mime = 'text/plain;charset=utf-8') {
   URL.revokeObjectURL(url);
 }
 
+function downloadBlobFile(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function openingInventoryBasename(doc) {
   const d = doc.transferDate || today();
   return `opening-inventory-${d}`;
 }
 
-function downloadOpeningInventoryFiles(doc) {
-  const base = openingInventoryBasename(doc);
-  downloadTextFile(`${base}.csv`, openingInventoryCsv(doc), 'text/csv;charset=utf-8');
-  downloadTextFile(`${base}.json`, JSON.stringify(doc, null, 2), 'application/json');
+async function ensureEvidenceFilesForDoc(doc, evidenceFiles) {
+  if (Array.isArray(evidenceFiles)) return evidenceFiles;
+  // Re-collect from IndexedDB when re-downloading a frozen doc
+  const rebuilt = [];
+  for (const row of doc.rows || []) {
+    const proofs = await collectProofsForOpeningTx(row.txId);
+    proofs.forEach((proof, i) => {
+      const ext = guessProofExt(proof.name, proof.type);
+      const exportName = `${row.transfer_date || today()}_${row.sku}_${String(i + 1).padStart(2, '0')}${ext}`;
+      rebuilt.push({
+        path: `evidence/${exportName}`,
+        blob: proof.blob,
+        txId: row.txId,
+        originalName: proof.name || exportName,
+      });
+    });
+  }
+  return rebuilt;
 }
 
-async function writeOpeningInventoryToCloud(doc) {
+async function downloadOpeningInventoryFiles(doc, evidenceFiles) {
+  const files = await ensureEvidenceFilesForDoc(doc, evidenceFiles);
+  const base = openingInventoryBasename(doc);
+
+  if (typeof JSZip === 'undefined') {
+    // Fallback: CSV/JSON only + individual image downloads
+    downloadTextFile(`${base}.csv`, openingInventoryCsv(doc), 'text/csv;charset=utf-8');
+    downloadTextFile(`${base}.json`, JSON.stringify(doc, null, 2), 'application/json');
+    for (const f of files) {
+      const name = f.path.split('/').pop();
+      downloadBlobFile(name, f.blob);
+    }
+    toast('JSZip 未載入，已改為分開下載檔案', 'w');
+    return;
+  }
+
+  const zip = new JSZip();
+  const root = zip.folder(base);
+  root.file(`${base}.csv`, openingInventoryCsv(doc));
+  root.file(`${base}.json`, JSON.stringify(doc, null, 2));
+  root.file(
+    'README.txt',
+    [
+      '開業期初庫存封存包',
+      `公司：${doc.meta?.company || ''}`,
+      `KVK：${doc.meta?.kvk || ''}`,
+      `轉入日：${doc.transferDate || ''}`,
+      '',
+      '內容：',
+      `- ${base}.csv / .json：清單（不計入 KOR）`,
+      '- evidence/：市價或轉入佐證截圖',
+      '',
+      doc.disclaimer || '',
+    ].join('\n')
+  );
+  for (const f of files) {
+    root.file(f.path, f.blob);
+  }
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  downloadBlobFile(`${base}.zip`, blob);
+}
+
+async function writeOpeningInventoryToCloud(doc, evidenceFiles) {
   if (!_dirHandle) return;
   try {
     if (!(await verifyPermission(_dirHandle))) return;
@@ -4850,6 +4974,8 @@ async function writeOpeningInventoryToCloud(doc) {
       folder = _dirHandle;
     }
     const base = openingInventoryBasename(doc);
+    const files = await ensureEvidenceFilesForDoc(doc, evidenceFiles);
+
     for (const [name, body] of [
       [`${base}.csv`, openingInventoryCsv(doc)],
       [`${base}.json`, JSON.stringify(doc, null, 2)],
@@ -4857,6 +4983,34 @@ async function writeOpeningInventoryToCloud(doc) {
       const fh = await folder.getFileHandle(name, { create: true });
       const w = await fh.createWritable();
       await w.write(body);
+      await w.close();
+    }
+
+    // Also write the zip if JSZip is available
+    if (typeof JSZip !== 'undefined') {
+      const zip = new JSZip();
+      const root = zip.folder(base);
+      root.file(`${base}.csv`, openingInventoryCsv(doc));
+      root.file(`${base}.json`, JSON.stringify(doc, null, 2));
+      for (const f of files) root.file(f.path, f.blob);
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const zfh = await folder.getFileHandle(`${base}.zip`, { create: true });
+      const zw = await zfh.createWritable();
+      await zw.write(zipBlob);
+      await zw.close();
+    }
+
+    let evidenceDir = folder;
+    try {
+      evidenceDir = await folder.getDirectoryHandle('evidence', { create: true });
+    } catch (e) {
+      evidenceDir = folder;
+    }
+    for (const f of files) {
+      const name = f.path.split('/').pop();
+      const fh = await evidenceDir.getFileHandle(name, { create: true });
+      const w = await fh.createWritable();
+      await w.write(f.blob);
       await w.close();
     }
   } catch (e) {
@@ -4874,7 +5028,7 @@ async function renderDocuments() {
   // First visit: auto-archive if live opening stock exists and no frozen doc yet
   if (!doc && liveCount > 0) {
     doc = await archiveOpeningInventoryDocument({ silent: true, download: true });
-    if (doc) toast(`已自動封存並下載期初庫存清單（${doc.totals.lineCount} 項）`, 's');
+    if (doc) toast(`已自動封存並下載 ZIP（${doc.totals.lineCount} 項，佐證 ${doc.totals.evidenceCount || 0} 張）`, 's');
   }
 
   const liveHint = liveCount
@@ -4886,11 +5040,11 @@ async function renderDocuments() {
       <div>
         <p class="docs-eyebrow">稅務佐證檔案庫</p>
         <h2 class="docs-title">相關文件</h2>
-        <p class="docs-lead">封存開業期初庫存等不計入 KOR 的證明文件，與日常營業額分開保存。</p>
+        <p class="docs-lead">封存開業期初庫存清單，並把進貨時上傳的佐證圖片一併打包成 ZIP（不計入 KOR）。</p>
       </div>
       <div class="docs-actions">
-        <button class="btn-primary" id="btnArchiveOpening">${doc ? '重新產生並封存' : '產生並封存期初庫存'}</button>
-        ${doc ? `<button class="btn-secondary" id="btnDownloadOpening">下載 CSV / JSON</button>` : ''}
+        <button class="btn-primary" id="btnArchiveOpening">${doc ? '重新產生並封存 ZIP' : '產生並封存 ZIP'}</button>
+        ${doc ? `<button class="btn-secondary" id="btnDownloadOpening">下載 ZIP（含圖片）</button>` : ''}
       </div>
     </div>
     <p class="docs-live-hint">${liveHint}</p>
@@ -4900,7 +5054,7 @@ async function renderDocuments() {
     body += `
       <div class="panel docs-empty">
         <p class="panel-title">尚無期初庫存文件</p>
-        <p class="panel-desc">點上方按鈕，系統會依商業庫存中「期初庫存」交易產生清單並封存。此清單 <strong>不計入 KOR 營業額</strong>，僅作為 IB 存貨成本基礎與查核佐證。</p>
+        <p class="panel-desc">點上方按鈕，系統會依商業庫存中「期初庫存／來自私人」交易產生清單，並把憑證圖片放進 ZIP 的 <code>evidence/</code> 資料夾。此清單 <strong>不計入 KOR 營業額</strong>。</p>
       </div>`;
     root.innerHTML = body;
     q('btnArchiveOpening')?.addEventListener('click', async () => {
@@ -4918,7 +5072,7 @@ async function renderDocuments() {
       <td class="mono">${esc(r.transfer_date)}</td>
       <td class="col-num">${eur(r.market_value_eur)}</td>
       <td class="col-num-strong">${eur(r.line_total_eur)}</td>
-      <td class="docs-evidence">${esc(r.evidence_filename || '—')}</td>
+      <td class="docs-evidence">${esc(r.evidence_filename || '—')}${r.evidence_count ? ` <span class="docs-ev-count">(${r.evidence_count})</span>` : ''}</td>
     </tr>
   `).join('');
 
@@ -4941,6 +5095,7 @@ async function renderDocuments() {
         <div><span class="sl">品項</span><span class="sv">${doc.totals?.lineCount ?? 0}</span></div>
         <div><span class="sl">數量合計</span><span class="sv">${doc.totals?.qty ?? 0}</span></div>
         <div><span class="sl">入帳市價合計</span><span class="sv">${eur(doc.totals?.marketValueEur || 0)}</span></div>
+        <div><span class="sl">佐證圖片</span><span class="sv">${doc.totals?.evidenceCount ?? 0}</span></div>
       </div>
       <div class="inv-table-wrap docs-table-wrap">
         <table class="inv-table docs-table">
@@ -4952,7 +5107,7 @@ async function renderDocuments() {
               <th>轉入日期</th>
               <th class="col-num">入帳市價</th>
               <th class="col-num">小計</th>
-              <th>市價截圖檔名</th>
+              <th>ZIP 內圖片檔名</th>
             </tr>
           </thead>
           <tbody>${rowsHtml || `<tr><td colspan="7" style="color:var(--t3)">無資料列</td></tr>`}</tbody>
@@ -4965,16 +5120,16 @@ async function renderDocuments() {
 
   q('btnArchiveOpening')?.addEventListener('click', async () => {
     const ok = await confirm2Async(
-      '重新產生會以「目前商業期初庫存交易」覆寫已封存清單，並再次下載 CSV/JSON。確定繼續？',
+      '重新產生會以目前商業開業轉入交易覆寫封存清單，並下載含圖片的 ZIP。確定繼續？',
       '重新封存'
     );
     if (!ok) return;
     await archiveOpeningInventoryDocument({ force: true });
     renderDocuments();
   });
-  q('btnDownloadOpening')?.addEventListener('click', () => {
-    downloadOpeningInventoryFiles(doc);
-    toast('已下載 CSV 與 JSON', 's');
+  q('btnDownloadOpening')?.addEventListener('click', async () => {
+    await downloadOpeningInventoryFiles(doc);
+    toast('已下載 ZIP（含 CSV／JSON／evidence 圖片）', 's');
   });
 }
 
