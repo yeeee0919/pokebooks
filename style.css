@@ -455,7 +455,7 @@ input, select { font-family: var(--font); }
 .prod-profit.neg { color: var(--red); }
 
 /* ─── TRANSACTION LIST ─── */
-.tx-table { width: 100%; border-collapse: collapse; font-size: .82rem; min-width: 720px; }
+.tx-table { width: 100%; border-collapse: collapse; font-size: .82rem; min-width: 560px; }
 .tx-table th {
   text-align: left; font-size: .68rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: .4px; color: var(--t3);
@@ -789,7 +789,7 @@ input, select { font-family: var(--font); }
 
 /* Side-by-side: tighter readable table */
 .tx-split-container.view-all .tx-table {
-  min-width: 620px;
+  min-width: 480px;
   font-size: .8rem;
 }
 .tx-split-container.view-all .tx-table th {
@@ -811,7 +811,7 @@ input, select { font-family: var(--font); }
   .tx-split-container.view-all {
     grid-template-columns: 1fr;
   }
-  .tx-split-container.view-all .tx-table { min-width: 720px; }
+  .tx-split-container.view-all .tx-table { min-width: 560px; }
   .tx-split-container.view-all .tx-scroll-hint { display: none; }
 }
 

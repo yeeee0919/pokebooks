@@ -3771,11 +3771,10 @@ function renderTxTableForScope(scopeKey, rows) {
     <thead><tr>
       <th class="col-check"><input type="checkbox" class="chk-select-all-scope" data-scope="${scopeKey}" title="全選"/></th>
       <th class="col-date">日期</th><th class="col-type">類型</th><th class="col-product">商品</th>
-      <th class="col-qty">數量</th><th class="col-amt">金額</th><th class="col-cogs">COGS</th><th class="col-gp">毛利</th><th class="col-actions">操作</th>
+      <th class="col-qty">數量</th><th class="col-amt">金額</th><th class="col-actions">操作</th>
     </tr></thead>
     <tbody>${rows.map(r=>{
       const t = r.tx;
-      const gpCls = r.grossProfit != null ? (r.grossProfit >= 0 ? 'sell' : 'buy') : '';
       return `<tr>
         <td class="col-check"><input type="checkbox" class="chk-tx" data-id="${t.id}"/></td>
         <td class="mono col-date" title="${t.date}">${t.date}</td>
@@ -3783,8 +3782,6 @@ function renderTxTableForScope(scopeKey, rows) {
         <td class="col-product"><span class="tx-product-name" title="${esc(r.productName)}">${esc(r.productName)}</span></td>
         <td class="mono col-qty">${t.quantity}</td>
         <td class="amount col-amt ${r.isSell?'sell':'buy'}">${r.isSell?'':'−'}${eur(r.total)}</td>
-        <td class="mono col-cogs">${r.cogs!=null?eur(r.cogs):'—'}</td>
-        <td class="amount col-gp ${gpCls}">${r.grossProfit!=null?eur(r.grossProfit):'—'}</td>
         <td class="col-actions">
           <div class="tx-actions">
             <button class="btn-icon-sm btn-edit-tx" data-id="${t.id}" title="編輯">✏️</button>
