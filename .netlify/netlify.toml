@@ -1,25 +1,3 @@
-plugins = []
-headers = []
-redirects = []
-
-[functions]
-
-[functions."*"]
-
+# Legacy Netlify config (production uses Vercel via GitHub)
 [build]
-publish = "/Users/zhangyi/Desktop/PokeLedger"
-publishOrigin = "default"
-
-[build.environment]
-
-[build.processing]
-
-[build.processing.css]
-
-[build.processing.html]
-
-[build.processing.images]
-
-[build.processing.js]
-
-[build.services]
+publish = "."

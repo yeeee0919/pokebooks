@@ -72,7 +72,7 @@ async function proofDeleteAll(txId) {
 }
 
 // In-memory staging area for newly-picked files before tx is saved
-const _proofStage = { buy: [], sell: [] }; // { file, objectURL }[]
+const _proofStage = { buy: [], sell: [], product: [] }; // { file, objectURL }[]
 
 function proofStageClear(modal) {
   (_proofStage[modal] || []).forEach(s => URL.revokeObjectURL(s.objectURL));
@@ -3428,7 +3428,7 @@ function renderInventoryPage(scopeF = 'biz') {
     rowsHtml += `<tr class="parent-row" data-id="${p.id}">
       <td>
         <div class="tree-tree-cell">
-          ${hasChildren ? `<span class="tree-toggle" data-toggle="${p.id}">${isCollapsed ? '►' : '▼'}</span>` : `<span class="tree-indent"></span>`}
+          ${hasChildren ? `<span class="tree-toggle" data-toggle="${p.id}">${isCollapsed ? '►' : '▼'}</span>` : ''}
           <span style="font-weight:700">${esc(p.name)}</span>
           <span class="type-badge ${esc(p.type)}">${esc(p.type)}</span>
         </div>
@@ -3437,7 +3437,7 @@ function renderInventoryPage(scopeF = 'biz') {
       <td class="mono" style="text-align:right">${m.totalSellQty || '—'}</td>
       <td class="mono" style="text-align:right;font-weight:800">${m.remainQty}</td>
       <td class="mono" style="text-align:right;color:var(--t2)">${m.wacc > 0 ? eur(m.wacc) : '—'}</td>
-      <td class="mono" style="text-align:right;font-weight:700">${m.marketPrice > 0 ? eur(m.marketPrice) : '—'}</td>
+      <td class="mono mkt-cell">${marketPriceCellHtml(p.id, m.marketPrice)}</td>
       <td class="mono ${changeCls}" style="text-align:right">${m.wacc > 0 && m.marketPrice > 0 ? changeSign + m.priceChangePct.toFixed(1) + '%' : '—'}</td>
       <td class="mono" style="text-align:right">${m.totalInvestment > 0 ? eur(m.totalInvestment) : '€0'}</td>
       <td class="mono ${profitCls}" style="text-align:right">${m.realizedProfit !== 0 ? profitSign + eur(m.realizedProfit) : '€0'}</td>
@@ -3459,7 +3459,7 @@ function renderInventoryPage(scopeF = 'biz') {
         const cProfitCls  = cm.realizedProfit > 0 ? 'badge-pos' : cm.realizedProfit < 0 ? 'badge-neg' : 'badge-flat';
 
         rowsHtml += `<tr class="child-row" data-id="${ch.id}">
-          <td style="padding-left:1.8rem">
+          <td class="tree-child-cell">
             <div class="tree-tree-cell">
               <span style="color:var(--b2);margin-right:4px">└</span>
               <span style="font-weight:600">${esc(ch.name)}</span>
@@ -3470,7 +3470,7 @@ function renderInventoryPage(scopeF = 'biz') {
           <td class="mono" style="text-align:right">${cm.totalSellQty || '—'}</td>
           <td class="mono" style="text-align:right;font-weight:800">${cm.remainQty}</td>
           <td class="mono" style="text-align:right;color:var(--t2)">${cm.wacc > 0 ? eur(cm.wacc) : '—'}</td>
-          <td class="mono" style="text-align:right;font-weight:700">${cm.marketPrice > 0 ? eur(cm.marketPrice) : '—'}</td>
+          <td class="mono mkt-cell">${marketPriceCellHtml(ch.id, cm.marketPrice)}</td>
           <td class="mono ${cChangeCls}" style="text-align:right">${cm.wacc > 0 && cm.marketPrice > 0 ? cChangeSign + cm.priceChangePct.toFixed(1) + '%' : '—'}</td>
           <td class="mono" style="text-align:right">${cm.totalInvestment > 0 ? eur(cm.totalInvestment) : '€0'}</td>
           <td class="mono ${cProfitCls}" style="text-align:right">${cm.realizedProfit !== 0 ? cProfitSign + eur(cm.realizedProfit) : '€0'}</td>
@@ -3488,7 +3488,7 @@ function renderInventoryPage(scopeF = 'biz') {
       <th style="text-align:right">售出</th>
       <th style="text-align:right">剩餘</th>
       <th style="text-align:right">均進價</th>
-      <th style="text-align:right">市值/張</th>
+      <th style="text-align:right">市值/張 <span class="col-hint" title="管理用參考價，點數字可編輯；商業/私人共用，不影響銷售">ⓘ</span></th>
       <th style="text-align:right">漲跌幅</th>
       <th style="text-align:right">總投入</th>
       <th style="text-align:right">已實現利潤</th>
@@ -3512,6 +3512,65 @@ function renderInventoryPage(scopeF = 'biz') {
   // Wire row click to open product detail modal/panel
   wrap.querySelectorAll('tr[data-id]').forEach(tr => {
     tr.addEventListener('click', () => openDetail(tr.dataset.id, scopeF));
+  });
+
+  wireMarketPriceEditors(wrap, scopeF);
+}
+
+function marketPriceCellHtml(productId, price) {
+  const label = price > 0 ? eur(price) : '—';
+  const emptyCls = price > 0 ? '' : ' empty';
+  return `<button type="button" class="mkt-edit-btn${emptyCls}" data-mkt-id="${productId}" title="點擊調整市值（管理用，不影響銷售）">${label}</button>`;
+}
+
+function wireMarketPriceEditors(wrap, scopeF) {
+  wrap.querySelectorAll('.mkt-edit-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openMarketPriceEditor(btn, scopeF);
+    });
+  });
+}
+
+function openMarketPriceEditor(btn, scopeF) {
+  const productId = btn.dataset.mktId;
+  const p = DB.products.find(x => x.id === productId);
+  if (!p) return;
+
+  const td = btn.closest('td');
+  const inp = document.createElement('input');
+  inp.type = 'number';
+  inp.className = 'mkt-inline-inp';
+  inp.min = '0';
+  inp.step = '0.01';
+  inp.value = (p.marketPriceEUR || 0) > 0 ? p.marketPriceEUR : '';
+
+  td.innerHTML = '';
+  td.appendChild(inp);
+  inp.focus();
+  if (inp.value) inp.select();
+
+  const commit = () => {
+    const raw = inp.value.trim();
+    if (raw === '') {
+      p.marketPriceEUR = 0;
+    } else {
+      const val = parseFloat(raw);
+      if (isNaN(val) || val < 0) {
+        renderInventoryPage(scopeF);
+        return;
+      }
+      p.marketPriceEUR = val;
+    }
+    save();
+    renderInventoryPage(scopeF);
+    toast('市值已更新（商業/私人共用，不影響銷售）', 's');
+  };
+
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+    if (e.key === 'Escape') { e.preventDefault(); renderInventoryPage(scopeF); }
   });
 }
 
@@ -3620,27 +3679,30 @@ function renderTxTableForScope(scopeKey, rows) {
     return;
   }
 
-  container.innerHTML = `<div class="tx-wrap"><table class="tx-table" style="font-size:.73rem">
+  container.innerHTML = `<div class="tx-scroll-hint">← 左右滑動查看更多 →</div>
+  <div class="tx-wrap"><table class="tx-table">
     <thead><tr>
-      <th style="width:28px;text-align:center"><input type="checkbox" class="chk-select-all-scope" data-scope="${scopeKey}" title="全選"/></th>
-      <th>日期</th><th>類型</th><th>商品</th>
-      <th>數量</th><th>金額</th><th>COGS</th><th>毛利</th><th>操作</th>
+      <th class="col-check"><input type="checkbox" class="chk-select-all-scope" data-scope="${scopeKey}" title="全選"/></th>
+      <th class="col-date">日期</th><th class="col-type">類型</th><th class="col-product">商品</th>
+      <th class="col-qty">數量</th><th class="col-amt">金額</th><th class="col-cogs">COGS</th><th class="col-gp">毛利</th><th class="col-actions">操作</th>
     </tr></thead>
     <tbody>${rows.map(r=>{
       const t = r.tx;
       const gpCls = r.grossProfit != null ? (r.grossProfit >= 0 ? 'sell' : 'buy') : '';
       return `<tr>
-        <td style="text-align:center"><input type="checkbox" class="chk-tx" data-id="${t.id}"/></td>
-        <td class="mono">${t.date.slice(5)}</td>
-        <td>${txBadge(t.type)}</td>
-        <td style="font-weight:600;color:var(--t1);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.productName)}">${esc(r.productName)}</td>
-        <td class="mono">${t.quantity}</td>
-        <td class="amount ${r.isSell?'sell':'buy'}">${r.isSell?'':'-'}${eur(r.total)}</td>
-        <td class="mono" style="color:var(--t3)">${r.cogs!=null?eur(r.cogs):'—'}</td>
-        <td class="amount ${gpCls}">${r.grossProfit!=null?eur(r.grossProfit):'—'}</td>
-        <td>
-          <button class="link-btn btn-edit-tx" data-id="${t.id}" style="margin-right:.3rem">✏️</button>
-          <button class="link-btn btn-del-tx" data-id="${t.id}" style="color:var(--red)">🗑️</button>
+        <td class="col-check"><input type="checkbox" class="chk-tx" data-id="${t.id}"/></td>
+        <td class="mono col-date">${t.date}</td>
+        <td class="col-type">${txBadge(t.type)}</td>
+        <td class="col-product tx-product-name">${esc(r.productName)}</td>
+        <td class="mono col-qty">${t.quantity}</td>
+        <td class="amount col-amt ${r.isSell?'sell':'buy'}">${r.isSell?'':'−'}${eur(r.total)}</td>
+        <td class="mono col-cogs">${r.cogs!=null?eur(r.cogs):'—'}</td>
+        <td class="amount col-gp ${gpCls}">${r.grossProfit!=null?eur(r.grossProfit):'—'}</td>
+        <td class="col-actions">
+          <div class="tx-actions">
+            <button class="btn-icon-sm btn-edit-tx" data-id="${t.id}" title="編輯">✏️</button>
+            <button class="btn-icon-sm danger btn-del-tx" data-id="${t.id}" title="刪除">🗑️</button>
+          </div>
         </td>
       </tr>`;
     }).join('')}</tbody>
@@ -3699,7 +3761,7 @@ function renderExpenses() {
     return;
   }
 
-  q('expList').innerHTML = `<div class="tx-wrap"><table class="tx-table">
+  q('expList').innerHTML = `<div class="tx-wrap" style="border:1px solid var(--b1);border-radius:var(--r3)"><table class="tx-table">
     <thead><tr><th>日期</th><th>類別</th><th>說明</th><th>金額</th><th>用途</th><th>刪除</th></tr></thead>
     <tbody>${exps.map(e=>`<tr>
       <td class="mono">${e.date}</td>
@@ -3827,6 +3889,7 @@ function renderSettings() {
 function openModalProduct(editId=null) {
   const isEdit = !!editId;
   const p = isEdit ? DB.products.find(x=>x.id===editId) : null;
+  const defaultScope = currentTab() === 'inventory-priv' ? 'priv' : 'biz';
 
   q('mProductTitle').textContent = isEdit ? '編輯商品' : '新增商品';
   q('pEditId').value   = editId||'';
@@ -3849,6 +3912,9 @@ function openModalProduct(editId=null) {
   q('pBuyDate').value   = today();
   q('pBuyCurrency').value = 'EUR';
   q('pFxGroup').style.display = 'none';
+  setScopeValue('pBuyScope', defaultScope);
+  proofStageClear('product');
+  renderProofThumbs('product');
 
   openModal('mProduct');
 }
@@ -3873,29 +3939,51 @@ q('btnSaveProduct').addEventListener('click', ()=>{
   if (isEdit) {
     const idx = DB.products.findIndex(x=>x.id===editId);
     if (idx>=0) DB.products[idx] = productData;
-  } else {
-    DB.products.push(productData);
-
-    // Initial BUY
-    const qty  = parseInt(q('pBuyQty').value)||0;
-    const cost = parseFloat(q('pBuyCost').value);
-    if (qty>0 && !isNaN(cost)) {
-      Ledger.recordInitialBuy({
-        productId:      productData.id,
-        date:           q('pBuyDate').value||today(),
-        quantity:       qty,
-        pricePerUnitEUR:cost,
-        platform:       q('pBuySource').value||'',
-        currency:       q('pBuyCurrency').value,
-        note:           '初始庫存',
-      });
-    }
+    save();
+    closeModal('mProduct');
+    refreshCurrentView();
+    toast('商品已更新','s');
+    return;
   }
 
+  DB.products.push(productData);
+
+  const qty  = parseInt(q('pBuyQty').value)||0;
+  const cost = parseFloat(q('pBuyCost').value);
+  const hasProofs = (_proofStage.product || []).length > 0;
+
+  if (hasProofs && (qty <= 0 || isNaN(cost))) {
+    DB.products.pop();
+    return toast('上傳憑證時請填寫初始進貨的數量與成本','e');
+  }
+
+  if (qty > 0 && !isNaN(cost)) {
+    const { ids } = Ledger.recordBuy({
+      scopeInput: q('pBuyScope')?.value || 'biz',
+      fields: {
+        productId:       productData.id,
+        date:            q('pBuyDate').value||today(),
+        quantity:        qty,
+        pricePerUnitEUR: cost,
+        platform:        q('pBuySource').value||'',
+        currency:        q('pBuyCurrency').value,
+        note:            '初始庫存',
+      },
+    });
+    save();
+    Promise.all(ids.map(id => proofCommit('product', id))).then(() => {
+      closeModal('mProduct');
+      refreshCurrentView();
+      toast(hasProofs ? `商品已新增，憑證已儲存（${ids.length} 筆進貨）` : '商品已新增','s');
+    });
+    return;
+  }
+
+  if (hasProofs) proofStageClear('product');
   save();
   closeModal('mProduct');
   refreshCurrentView();
-  toast(isEdit?'商品已更新':'商品已新增','s');
+  toast('商品已新增','s');
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -4420,6 +4508,7 @@ function toast(msg, type='s') {
 function wireEvents() {
   setupProofZone('buy');
   setupProofZone('sell');
+  setupProofZone('product');
 
   // Nav
   document.querySelectorAll('.nav-link[data-tab]').forEach(l=>{
@@ -4488,6 +4577,18 @@ function wireEvents() {
   q('btnAddSell').addEventListener('click', ()=>openModalSell());
   q('btnAddBuy').addEventListener('click', ()=>openModalBuy());
   ['txScopeFilter','txYearFilter','txTypeFilter'].forEach(id=>q(id)?.addEventListener('change', renderTransactions));
+  document.querySelectorAll('#txScopeTabs .pill-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#txScopeTabs .pill-btn').forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      });
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      const container = q('txSplitContainer');
+      if (container) container.className = 'tx-split-container view-' + btn.dataset.txView;
+    });
+  });
 
   // Expenses
   q('btnAddExpense').addEventListener('click', ()=>{

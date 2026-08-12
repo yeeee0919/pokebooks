@@ -114,7 +114,7 @@
 
       <!-- ── BUSINESS INVENTORY ── -->
       <div class="view" id="view-inventory-biz">
-        <div class="toolbar" style="flex-wrap:wrap;gap:.75rem">
+        <div class="toolbar toolbar-card" style="flex-wrap:wrap;gap:.75rem">
           <div class="tl" style="flex-wrap:wrap;gap:.5rem">
             <div class="pill-tabs" id="invTypePills-biz">
               <button class="pill-btn active" data-type="">全部</button>
@@ -138,7 +138,7 @@
 
       <!-- ── PRIVATE INVENTORY ── -->
       <div class="view" id="view-inventory-priv">
-        <div class="toolbar" style="flex-wrap:wrap;gap:.75rem">
+        <div class="toolbar toolbar-card" style="flex-wrap:wrap;gap:.75rem">
           <div class="tl" style="flex-wrap:wrap;gap:.5rem">
             <div class="pill-tabs" id="invTypePills-priv">
               <button class="pill-btn active" data-type="">全部</button>
@@ -162,43 +162,50 @@
 
       <!-- ── TRANSACTIONS ── -->
       <div class="view" id="view-transactions">
-        <div class="toolbar">
+        <div class="toolbar toolbar-card">
           <div class="tl">
             <select class="sel" id="txYearFilter"><option value="2026">2026</option><option value="2025">2025</option><option value="all">全部年份</option></select>
             <select class="sel" id="txTypeFilter"><option value="">全部類型</option><option value="BUY">進貨 BUY</option><option value="SELL">銷售 SELL</option><option value="GRADE">送評 GRADE</option></select>
           </div>
           <div class="tr">
-            <button class="btn-secondary" id="btnBulkEdit" style="display:none">✏️ 批次修改已選項 (<span id="bulkCount">0</span>)</button>
+            <button class="btn-secondary" id="btnBulkEdit" style="display:none">✏️ 批次修改 (<span id="bulkCount">0</span>)</button>
             <button class="btn-danger btn-sm" id="btnBulkDelete" style="display:none">🗑️ 批次刪除</button>
             <button class="btn-primary" id="btnAddSell">＋ 記錄銷售</button>
             <button class="btn-secondary" id="btnAddBuy">＋ 記錄進貨</button>
           </div>
         </div>
-        
-        <div class="tx-split-container">
-          <!-- Left Column: Private -->
-          <div class="tx-split-col">
+
+        <div class="tx-scope-bar">
+          <div class="pill-tabs" id="txScopeTabs" role="tablist" aria-label="交易範圍">
+            <button class="pill-btn active" type="button" data-tx-view="all" role="tab" aria-selected="true">全部對照</button>
+            <button class="pill-btn" type="button" data-tx-view="priv" role="tab" aria-selected="false">👤 私人交易</button>
+            <button class="pill-btn" type="button" data-tx-view="biz" role="tab" aria-selected="false">🏢 商業交易</button>
+          </div>
+          <p class="tx-scope-hint">表格可左右滑動查看完整欄位；切換分頁可專注單一範圍。</p>
+        </div>
+
+        <div class="tx-split-container view-all" id="txSplitContainer">
+          <div class="tx-split-col" data-scope="priv">
             <div class="tx-split-hd priv-hd">
-              <span>👤 私人交易 (不報稅)</span>
+              <span class="tx-split-title">👤 私人交易 (不報稅)</span>
               <span class="tx-split-meta" id="txSummary-priv">0 筆</span>
             </div>
-            <div id="txList-priv"></div>
+            <div class="tx-list-body" id="txList-priv"></div>
           </div>
-          
-          <!-- Right Column: Business -->
-          <div class="tx-split-col">
+
+          <div class="tx-split-col" data-scope="biz">
             <div class="tx-split-hd biz-hd">
-              <span>🏢 商業交易 (報稅/KOR)</span>
+              <span class="tx-split-title">🏢 商業交易 (報稅/KOR)</span>
               <span class="tx-split-meta" id="txSummary-biz">0 筆</span>
             </div>
-            <div id="txList-biz"></div>
+            <div class="tx-list-body" id="txList-biz"></div>
           </div>
         </div>
       </div>
 
       <!-- ── EXPENSES ── -->
       <div class="view" id="view-expenses">
-        <div class="toolbar">
+        <div class="toolbar toolbar-card">
           <div class="tl">
             <select class="sel" id="expCatFilter"><option value="">全部類別</option><option value="packaging">包材/運費</option><option value="platform_fee">平台費</option><option value="grading_fee">評級費</option><option value="mileage">里程費</option><option value="travel">出差費</option><option value="accountant">會計師費</option><option value="other">其他</option></select>
           </div>
@@ -210,7 +217,7 @@
 
       <!-- ── REPORTS ── -->
       <div class="view" id="view-reports">
-        <div class="toolbar">
+        <div class="toolbar toolbar-card">
           <div class="tl"><select class="sel" id="rptYear"><option value="2026">2026 年度</option><option value="2025">2025 年度</option></select></div>
           <div class="tr"><button class="btn-secondary" id="btnPrint">🖨️ 列印</button></div>
         </div>
@@ -299,7 +306,7 @@
 
 <!-- Add/Edit Product -->
 <div class="modal-overlay" id="mProduct">
-  <div class="modal">
+  <div class="modal modal-lg">
     <div class="mhd"><h2 id="mProductTitle">新增商品</h2><button class="mclose" data-close="mProduct">&times;</button></div>
     <div class="mbd">
       <input type="hidden" id="pEditId"/>
@@ -339,6 +346,27 @@
             <select id="pBuyCurrency" class="finp"><option value="EUR">EUR</option><option value="TWD">TWD</option><option value="USD">USD</option></select>
           </div>
           <div class="fg" id="pFxGroup" style="display:none"><label>匯率（→EUR/張）</label><input type="number" id="pBuyFx" class="finp" placeholder="0.0000" step="0.0001"/></div>
+        </div>
+        <div class="fg">
+          <label>帳戶歸屬 <span class="req">*</span></label>
+          <input type="hidden" id="pBuyScope" value="biz"/>
+          <div class="scope-btns">
+            <button type="button" class="scope-btn active" data-scope="biz" data-target="pBuyScope">🏢 商業</button>
+            <button type="button" class="scope-btn" data-scope="priv" data-target="pBuyScope">👤 私人</button>
+          </div>
+          <p class="field-hint">選「商業」會同時記一筆私人帳；憑證圖片會附加在進貨紀錄上。</p>
+        </div>
+        <div class="fg">
+          <label>📎 憑證圖片（發票、刷卡紀錄、對話截圖…）</label>
+          <div class="proof-upload-zone" id="productProofZone">
+            <input type="file" id="productProofInput" accept="image/*" multiple/>
+            <label for="productProofInput" class="proof-upload-label">
+              <span class="upload-ico">🖼️</span>
+              <span>點擊上傳圖片，或拖曳到此處</span>
+              <span style="font-size:.75rem;opacity:.6">支援 JPG、PNG、WEBP、HEIC，可多選</span>
+            </label>
+            <div class="proof-thumbs" id="productProofThumbs"></div>
+          </div>
         </div>
       </div>
     </div>
