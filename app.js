@@ -3039,10 +3039,11 @@ const DEFAULT = {
     }
   ],
   "expenses": [],
+  "documents": [],
   "settings": {
-    "company": "",
-    "kvk": "",
-    "korStart": "",
+    "company": "Yi Trading",
+    "kvk": "42131151",
+    "korStart": "2026-08-12",
     "fiscalYear": 2026
   }
 };
@@ -3081,13 +3082,25 @@ function load() {
         }
       });
       ScopeLedger.normalizeScopeOnLoad(txns);
-      return {
+      const settings = { ...DEFAULT.settings, ...(parsed.settings || {}) };
+      // Seed blank company fields from KVK profile (do not overwrite user edits)
+      let seeded = false;
+      if (!String(settings.company || '').trim()) { settings.company = DEFAULT.settings.company; seeded = true; }
+      if (!String(settings.kvk || '').trim()) { settings.kvk = DEFAULT.settings.kvk; seeded = true; }
+      if (!String(settings.korStart || '').trim()) { settings.korStart = DEFAULT.settings.korStart; seeded = true; }
+      if (!settings.fiscalYear) { settings.fiscalYear = DEFAULT.settings.fiscalYear; seeded = true; }
+      const db = {
         ...DEFAULT,
         ...parsed,
         transactions: txns,
-        settings: { ...DEFAULT.settings, ...(parsed.settings || {}) },
+        settings,
         expenses: parsed.expenses || [],
+        documents: Array.isArray(parsed.documents) ? parsed.documents : [],
       };
+      if (seeded) {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); } catch (e) {}
+      }
+      return db;
     }
   } catch(e) {}
   const fresh = JSON.parse(JSON.stringify(DEFAULT));
@@ -3156,6 +3169,7 @@ const TAB_TITLES = {
   expenses:         '費用記錄',
   reports:          '損益報表',
   calendar:         '報稅行事曆',
+  documents:        '相關文件',
   settings:         '設定 & 備份',
 };
 
@@ -3180,6 +3194,7 @@ function renderTab(tab) {
     case 'expenses':        renderExpenses();               break;
     case 'reports':         renderReports();                break;
     case 'calendar':        renderCalendar();               break;
+    case 'documents':       renderDocuments();              break;
     case 'settings':        renderSettings();               break;
   }
 }
@@ -3204,7 +3219,7 @@ function renderDashboard() {
   const dot = q('korDot'), cap = q('korCaption'), lbl = q('korStatLabel');
   if (p >= 100) {
     dot.style.background='var(--red)'; dot.style.boxShadow='0 0 6px var(--red)';
-    cap.textContent='🚨 已超 KOR 上限！請立即諮詢會計師，下一筆銷售需開始收 BTW。'; lbl.textContent='🚨 超限';
+    cap.textContent='🚨 已超 KOR 上限！下一筆商業銷售需開始收 BTW——立刻跟我說，我們一起處理。'; lbl.textContent='🚨 超限';
   } else if (p >= 95) {
     dot.style.background='var(--red)'; dot.style.boxShadow='0 0 6px var(--red)';
     cap.textContent='🔴 剩餘空間不足 '+eur(KOR_LIMIT-rev,0)+'，下一筆銷售極可能超限！'; lbl.textContent='🔴 極危險';
@@ -3262,24 +3277,33 @@ function renderDashboard() {
       <span class="r-amt ${r.amt<0?'neg':''}">${r.amt>=0?'':'-'}${eur(Math.abs(r.amt))}</span>
     </div>`).join('') : '<p class="empty-sm">尚無交易記錄</p>';
 
-  // Deadlines
-  const yr1 = yr, yr2 = yr+1;
-  const deadlines = [
-    { date:`${yr2}-05-01`, title:`${yr1} 所得稅申報`, desc:'Inkomstenbelasting 截止（可申請延期）' },
-    { date:`${yr1}-12-31`, title:'KOR 年度核查', desc:`確認 ${yr1} 年度 KOR 資格，若接近上限請提前規劃` },
-    { date:`${yr2}-01-31`, title:'KOR 延續確認', desc:'確認下一年度符合 KOR 資格（年營業額 < €20,000）' },
-  ];
-  q('dashDeadlines').innerHTML = deadlines.map(d=>{
+  // Deadlines (upcoming only on dashboard)
+  const upcoming = getTaxEvents(yr).filter(e => daysUntil(e.date) >= 0).slice(0, 4);
+  const next = upcoming[0];
+  const nextEl = q('dashTaxNext');
+  if (nextEl) {
+    if (next) {
+      const days = daysUntil(next.date);
+      nextEl.style.display = '';
+      nextEl.className = 'tax-next' + (days < 30 ? ' urgent' : '');
+      nextEl.innerHTML = `
+        <div class="tax-next-label">${days < 30 ? '⚠️ 即將到期' : '📌 下一件報稅事'}</div>
+        <div class="tax-next-title">${esc(next.title)}</div>
+        <div class="tax-next-meta">${esc(next.date)} · ${days === 0 ? '就是今天' : `還有 ${days} 天`} · ${esc(next.action || next.desc)}</div>`;
+    } else {
+      nextEl.style.display = 'none';
+      nextEl.innerHTML = '';
+    }
+  }
+  q('dashDeadlines').innerHTML = upcoming.length ? upcoming.map(d=>{
     const days = daysUntil(d.date);
-    const [,mo,day] = d.date.split('-');
-    const cls = days<30?'urgent':days<90?'warn':'ok';
-    const txt = days<0?'已過期':days<30?`緊急 ${days} 天`:`${days} 天後`;
+    const txt = days === 0 ? '今天' : days < 30 ? `緊急 ${days} 天` : `${days} 天後`;
     return `<div class="dl-item">
       <div class="dl-date">${d.date}</div>
       <div class="dl-title">${esc(d.title)}</div>
-      <div class="dl-days ${days<30?'warn':''}">${txt}　${esc(d.desc)}</div>
+      <div class="dl-days ${days<30?'warn':''}">${txt}　${esc(d.short || d.desc)}</div>
     </div>`;
-  }).join('');
+  }).join('') : '<p class="empty-sm">本稅年截止日已過，可切換稅年查看下一年度。</p>';
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -3915,14 +3939,14 @@ function renderReports() {
   </div>
 
   <div class="panel rpt-section">
-    <div class="rpt-title">🧮 所得稅試算（僅供參考，請諮詢會計師）</div>
+    <div class="rpt-title">🧮 所得稅試算（報稅前我會陪你核對）</div>
     <div class="pl-row"><span>稅前利潤</span><span class="pl-val">${eur(opProfit)}</span></div>
     <div class="pl-row indent"><span>— zelfstandigenaftrek（需≥1,225工時/年）</span><span class="pl-val pos">-${eur(ZFA)}</span></div>
     <div class="pl-row indent"><span>— startersaftrek（創業前5年適用）</span><span class="pl-val pos">-${eur(SFA)}</span></div>
     <div class="pl-row indent"><span>— MKB-winstvrijstelling 12.7%</span><span class="pl-val pos">-${eur(aft2*MKB)}</span></div>
     <div class="pl-row subtotal"><span>應稅所得（估算）</span><span class="pl-val">${eur(aft3)}</span></div>
     <div class="pl-row grand"><span>所得稅估算（Box 1 · 36.97%）</span><span class="pl-val neg">${eur(taxEst)}</span></div>
-    <p style="font-size:.7rem;color:var(--t3);margin-top:.65rem">⚠️ 節稅資格（工時、startersaftrek年限）需個別確認。本試算僅為估算，請報稅前諮詢會計師。</p>
+    <p style="font-size:.7rem;color:var(--t3);margin-top:.65rem">⚠️ 工時／startersaftrek 資格會影響可扣金額。報稅前把損益報表打開，我會幫你逐項核對後再填 Mijn Belastingdienst。</p>
   </div>
 
   <div class="panel rpt-section">
@@ -3933,29 +3957,127 @@ function renderReports() {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  TAX CALENDAR (eenmanszaak + KOR)
+// ══════════════════════════════════════════════════════════════
+function getTaxEvents(yr) {
+  const co = DB.settings.company || 'Yi Trading';
+  const events = [
+    {
+      date: `${yr}-09-30`,
+      title: '年中 KOR 進度檢查',
+      short: '看儀表板營業額是否偏高',
+      action: '打開儀表板確認商業銷售進度',
+      desc: `${co}：檢查 ${yr} 年至今商業銷售（KOR omzet）。若已過半上限，後半年放慢商業出貨或先賣私人庫存。`,
+    },
+    {
+      date: `${yr}-12-31`,
+      title: `${yr} 年底關帳 + KOR 核查`,
+      short: '盤點庫存、費用記齊、確認未破 €20,000',
+      action: '商業庫存盤點 + 費用補齊 + KOR 年營業額確認',
+      desc: `確認 ${yr} 全年商業銷售 < €20,000；商業費用記齊；盤點商業庫存。這是隔年報所得稅的底稿。`,
+    },
+    {
+      date: `${yr + 1}-01-31`,
+      title: 'KOR 明年資格確認',
+      short: '決定是否繼續免收 BTW',
+      action: '確認是否繼續適用 KOR',
+      desc: `若 ${yr} 年營業額接近或超過 €20,000，需規劃退出 KOR 並開始收 BTW。未超限則可繼續。KOR 期間通常不必每季報 BTW。`,
+    },
+    {
+      date: `${yr + 1}-03-01`,
+      title: `${yr} 所得稅可開始申報`,
+      short: 'Mijn Belastingdienst 開放填報',
+      action: '用 DigiD 登入開始填 Inkomstenbelasting',
+      desc: `從 3/1 起可在 Mijn Belastingdienst 申報 ${yr} 年所得稅。把本系統「損益報表」的營業額、成本、費用、庫存帶去填 winst uit onderneming。到時找我一起核對。`,
+    },
+    {
+      date: `${yr + 1}-04-15`,
+      title: `報稅數字最後核對（建議）`,
+      short: '距截止約兩週，數字要定稿',
+      action: '損益／KOR／費用／庫存最後核對',
+      desc: `距 5/1 截止約兩週。核對商業營業額、COGS、費用、期末庫存；確認 DigiD 可用。來不及就在 5/1 前申請 uitstel（延期）。`,
+    },
+    {
+      date: `${yr + 1}-05-01`,
+      title: `${yr} 所得稅申報截止 🚨`,
+      short: 'Inkomstenbelasting 通常截止日',
+      action: '今天前送出申報，或申請延期',
+      desc: `${yr} 年 Inkomstenbelasting 通常截止日。KOR 只免 BTW，所得稅仍要報。來不及務必在今天前於 Mijn Belastingdienst 申請 uitstel。`,
+    },
+  ];
+  return events.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function taxPillClass(days) {
+  if (days < 0) return 'ok';
+  if (days < 30) return 'urgent';
+  if (days < 90) return 'warn';
+  return 'ok';
+}
+
+function taxDaysText(days) {
+  if (days < 0) return '已過期';
+  if (days === 0) return '就是今天';
+  if (days < 30) return `緊急：${days} 天後`;
+  return `${days} 天後`;
+}
+
+function maybeToastTaxDeadline() {
+  const upcoming = getTaxEvents(fiscalYear()).filter(e => {
+    const d = daysUntil(e.date);
+    return d >= 0 && d <= 45;
+  });
+  if (!upcoming.length) return;
+  const next = upcoming[0];
+  const key = `pokeledger_tax_toast_${next.date}`;
+  try {
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
+  } catch (e) {}
+  const days = daysUntil(next.date);
+  toast(`📅 報稅提醒：${next.title}（${days === 0 ? '今天' : `${days} 天後`}）`, days < 14 ? 'w' : '');
+}
+
+// ══════════════════════════════════════════════════════════════
 //  CALENDAR
 // ══════════════════════════════════════════════════════════════
 function renderCalendar() {
   const yr = fiscalYear();
-  const events = [
-    { date:`${yr+1}-05-01`, title:`${yr} 年所得稅申報`, desc:'每年 3 月 1 日起可在 MijnBelastingdienst 申報，截止 5 月 1 日（可申請延期至 9 月）。', },
-    { date:`${yr}-12-31`, title:'KOR 年度上限核查',  desc:`確認 ${yr} 全年 KOR 營業額是否低於 €20,000。若接近上限，規劃 ${yr+1} 銷售節奏。`, },
-    { date:`${yr+1}-01-31`, title:'KOR 延續資格確認', desc:'確認下一年度 KOR 資格。KOR 自動延續，但須主動監控年度營業額。', },
-    { date:`${yr+1}-04-30`, title:'荷蘭公司年報（若適用）', desc:'Eenmanszaak 通常不需提交正式年報，但建議整理好帳本，以便被查稅時使用。', },
-  ];
+  const events = getTaxEvents(yr);
+  const upcoming = events.filter(e => daysUntil(e.date) >= 0);
+  const past = events.filter(e => daysUntil(e.date) < 0).reverse();
+  const next = upcoming[0];
+
+  const card = (e) => {
+    const days = daysUntil(e.date);
+    const [, mo, day] = e.date.split('-');
+    return `<div class="cal-card">
+      <div class="cal-date"><div class="cal-mo">${mo}月</div><div class="cal-day">${day}</div></div>
+      <div class="cal-info">
+        <div class="cal-ttl">${esc(e.title)}</div>
+        <div class="cal-desc">${esc(e.desc)}</div>
+        ${e.action ? `<div class="cal-desc" style="margin-top:.35rem;color:var(--gold)">👉 ${esc(e.action)}</div>` : ''}
+      </div>
+      <div class="cal-pill ${taxPillClass(days)}">${esc(taxDaysText(days))}</div>
+    </div>`;
+  };
+
   q('calContent').innerHTML = `
-    <p style="font-size:.77rem;color:var(--t2);margin-bottom:1rem">以下截止日為 ${yr} 稅年。法規可能變動，請以 belastingdienst.nl 官網為準。</p>
-    ${events.map(e=>{
-      const days = daysUntil(e.date);
-      const [,mo,day] = e.date.split('-');
-      const cls = days<0?'urgent':days<30?'urgent':days<90?'warn':'ok';
-      const txt = days<0?'已過期':days<30?`緊急：${days} 天後`:days<90?`${days} 天後`:`${days} 天後`;
-      return `<div class="cal-card">
-        <div class="cal-date"><div class="cal-mo">${mo}月</div><div class="cal-day">${day}</div></div>
-        <div class="cal-info"><div class="cal-ttl">${esc(e.title)}</div><div class="cal-desc">${esc(e.desc)}</div></div>
-        <div class="cal-pill ${cls}">${esc(txt)}</div>
-      </div>`;
-    }).join('')}`;
+    <div class="cal-intro">
+      <strong>${esc(DB.settings.company || 'Yi Trading')}</strong> · ${yr} 稅年報稅時程<br/>
+      你是 eenmanszaak + KOR：<strong>不用每季報 BTW</strong>，但<strong>每年一定要報所得稅（Inkomstenbelasting）</strong>。
+      ${yr === 2026 ? '你 2026-08-12 成立，第一次正式報稅是 <strong>2027 年 3–5 月報 2026 年所得</strong>。' : ''}
+      截止日以 Belastingdienst 當年信件／官網為準；接近時我會在儀表板提醒你。
+    </div>
+    ${next ? `<div class="tax-next ${daysUntil(next.date) < 30 ? 'urgent' : ''}">
+      <div class="tax-next-label">${daysUntil(next.date) < 30 ? '⚠️ 下一件要做的' : '📌 下一件報稅事'}</div>
+      <div class="tax-next-title">${esc(next.title)} · ${esc(next.date)}</div>
+      <div class="tax-next-meta">${esc(next.action || next.desc)}</div>
+    </div>` : ''}
+    <div class="cal-section-title">即將到來</div>
+    ${upcoming.length ? upcoming.map(card).join('') : '<p class="empty-sm">本稅年已無未到期項目。</p>'}
+    ${past.length ? `<div class="cal-section-title">已過期（作紀錄）</div>${past.map(card).join('')}` : ''}
+  `;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -4272,7 +4394,7 @@ function updateKorCheck() {
   if (!price) { el.className='kor-check'; el.textContent=''; return; }
   if (newRev > KOR_LIMIT) {
     el.className='kor-check danger';
-    el.textContent=`🚨 此筆後年度 KOR 達 ${eur(newRev)}，超過上限 €20,000！請先諮詢會計師。`;
+    el.textContent=`🚨 此筆後年度 KOR 達 ${eur(newRev)}，超過上限 €20,000！先別急著賣——跟我說，我們一起處理 BTW。`;
   } else if (newRev > KOR_LIMIT*0.9) {
     el.className='kor-check danger';
     el.textContent=`⚠️ 此筆後年度 KOR 達 ${eur(newRev)}（${pct(newRev/KOR_LIMIT*100)}），接近上限！`;
@@ -4302,7 +4424,7 @@ q('btnSaveSell').addEventListener('click', async ()=>{
   if (scopeVal === 'biz' || (editId && txScope(Ledger.findById(editId)) === 'biz')) {
     const newRev = korRevenue(fiscalYear()) + price * qty;
     if (newRev > KOR_LIMIT) {
-      const ok = await confirm2Async(`🚨 KOR 超限警告\n\n此筆銷售後年度營業額將達 ${eur(newRev)}，超過 €20,000 KOR 上限。\n\n請確認已諮詢會計師後再繼續。`, '仍要記錄');
+      const ok = await confirm2Async(`🚨 KOR 超限警告\n\n此筆銷售後年度營業額將達 ${eur(newRev)}，超過 €20,000 KOR 上限。\n\n超限後通常要開始收 BTW。確定仍要記錄這筆嗎？`, '仍要記錄');
       if (!ok) return;
     }
   }
@@ -4535,6 +4657,324 @@ q('btnSaveExpense').addEventListener('click', ()=>{
 });
 
 // ══════════════════════════════════════════════════════════════
+//  DOCUMENTS — tax evidence archive (opening inventory, etc.)
+// ══════════════════════════════════════════════════════════════
+const DOC_TYPE_OPENING = 'opening_inventory';
+
+function ensureDocumentsArray() {
+  if (!Array.isArray(DB.documents)) DB.documents = [];
+  return DB.documents;
+}
+
+function isOpeningBuyTx(t) {
+  if (!t || t.type !== 'BUY') return false;
+  if (ScopeLedger.normalizeScope(t, DB.transactions) !== 'biz') return false;
+  const platform = t.platform || '';
+  const note = t.note || '';
+  return platform === 'initial' || note === '初始庫存' || note === '期初庫存';
+}
+
+function productNameDetail(p) {
+  if (!p) return '（未知商品）';
+  const parts = [p.name, p.type, p.language].filter(Boolean);
+  if (p.notes) parts.push(p.notes);
+  return parts.join(' / ');
+}
+
+function suggestedEvidenceFilename(row) {
+  const safeSku = String(row.sku || 'SKU').replace(/[^\w\-]+/g, '_');
+  return `${row.transfer_date || today()}_${safeSku}_Cardmarket_01.png`;
+}
+
+function getOpeningBuyTransactions() {
+  return DB.transactions
+    .filter(isOpeningBuyTx)
+    .slice()
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id)));
+}
+
+async function buildOpeningInventoryRows() {
+  const buys = getOpeningBuyTransactions();
+  const rows = [];
+  for (const t of buys) {
+    const p = DB.products.find(x => x.id === t.productId);
+    const qty = Number(t.quantity) || 0;
+    const unit = Number(t.pricePerUnitEUR) || 0;
+    const sku = (t.productId || '').slice(0, 8).toUpperCase();
+    let evidenceNames = [];
+    try {
+      const proofs = await proofGetAll(t.id);
+      evidenceNames = (proofs || []).map(r => r.name).filter(Boolean);
+      // Paired priv proofs are not used — opening must be biz-only
+    } catch (e) {}
+    const row = {
+      sku,
+      productId: t.productId,
+      txId: t.id,
+      name_detail: productNameDetail(p),
+      qty,
+      transfer_date: t.date || DB.settings.korStart || today(),
+      market_value_eur: unit,
+      line_total_eur: Math.round(qty * unit * 100) / 100,
+      evidence_filename: evidenceNames.join(' | ') || '',
+      evidence_source: evidenceNames.length ? '已上傳佐證截圖' : '待補：Cardmarket / eBay Sold',
+      valuation_basis: '開業日公允市價（期初 inbreng）',
+      ledger_scope: 'biz',
+      entry_type: 'OPENING_INBRENG',
+      kor_relevant: false,
+      ib_cost_basis: true,
+      notes: t.note || '',
+    };
+    if (!row.evidence_filename) row.evidence_filename = suggestedEvidenceFilename(row);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function findOpeningInventoryDoc() {
+  return ensureDocumentsArray().find(d => d.type === DOC_TYPE_OPENING) || null;
+}
+
+async function archiveOpeningInventoryDocument({ force = false, silent = false, download = !silent } = {}) {
+  const existing = findOpeningInventoryDoc();
+  if (existing && !force) return existing;
+
+  const rows = await buildOpeningInventoryRows();
+  if (!rows.length) {
+    if (!silent) toast('沒有商業「期初庫存」交易可封存。請先在商業庫存以來源「期初庫存」入帳。', 'w');
+    return null;
+  }
+
+  const totalQty = rows.reduce((s, r) => s + (r.qty || 0), 0);
+  const totalValue = rows.reduce((s, r) => s + (r.line_total_eur || 0), 0);
+  const transferDate = DB.settings.korStart || rows[0].transfer_date || today();
+  const doc = {
+    id: existing?.id || uid(),
+    type: DOC_TYPE_OPENING,
+    title: '開業期初庫存清單（Inbreng / Privéstorting）',
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    transferDate,
+    korRelevant: false,
+    ibCostBasis: true,
+    meta: {
+      company: DB.settings.company || '',
+      kvk: DB.settings.kvk || '',
+      korStart: DB.settings.korStart || '',
+      fiscalYear: fiscalYear(),
+    },
+    disclaimer:
+      '本文件為開業日私人資產轉入企業之存貨證明與 IB 成本基礎。非銷售、不計入 KOR 營業額（omzet）。',
+    totals: {
+      lineCount: rows.length,
+      qty: totalQty,
+      marketValueEur: Math.round(totalValue * 100) / 100,
+    },
+    rows,
+  };
+
+  const docs = ensureDocumentsArray();
+  const idx = docs.findIndex(d => d.id === doc.id || d.type === DOC_TYPE_OPENING);
+  if (idx >= 0) docs[idx] = doc;
+  else docs.unshift(doc);
+  save();
+
+  if (download) downloadOpeningInventoryFiles(doc);
+  await writeOpeningInventoryToCloud(doc);
+
+  if (!silent) {
+    toast(`期初庫存清單已封存：${doc.totals.lineCount} 項、合計 ${eur(doc.totals.marketValueEur)}`, 's');
+  }
+  return doc;
+}
+
+function openingInventoryCsv(doc) {
+  const headers = [
+    'sku', 'name_detail', 'qty', 'transfer_date', 'market_value_eur', 'line_total_eur',
+    'evidence_filename', 'evidence_source', 'valuation_basis', 'ledger_scope',
+    'entry_type', 'kor_relevant', 'ib_cost_basis', 'notes', 'productId', 'txId',
+  ];
+  const escape = (v) => {
+    const s = String(v ?? '');
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [headers.join(',')];
+  (doc.rows || []).forEach(r => {
+    lines.push(headers.map(h => escape(r[h])).join(','));
+  });
+  lines.push('');
+  lines.push(`# company,${escape(doc.meta?.company || '')}`);
+  lines.push(`# kvk,${escape(doc.meta?.kvk || '')}`);
+  lines.push(`# transfer_date,${escape(doc.transferDate || '')}`);
+  lines.push(`# total_qty,${doc.totals?.qty ?? 0}`);
+  lines.push(`# total_market_value_eur,${doc.totals?.marketValueEur ?? 0}`);
+  lines.push(`# kor_relevant,false`);
+  lines.push(`# disclaimer,${escape(doc.disclaimer || '')}`);
+  return lines.join('\n');
+}
+
+function downloadTextFile(filename, text, mime = 'text/plain;charset=utf-8') {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function openingInventoryBasename(doc) {
+  const d = doc.transferDate || today();
+  return `opening-inventory-${d}`;
+}
+
+function downloadOpeningInventoryFiles(doc) {
+  const base = openingInventoryBasename(doc);
+  downloadTextFile(`${base}.csv`, openingInventoryCsv(doc), 'text/csv;charset=utf-8');
+  downloadTextFile(`${base}.json`, JSON.stringify(doc, null, 2), 'application/json');
+}
+
+async function writeOpeningInventoryToCloud(doc) {
+  if (!_dirHandle) return;
+  try {
+    if (!(await verifyPermission(_dirHandle))) return;
+    let folder = _dirHandle;
+    try {
+      folder = await _dirHandle.getDirectoryHandle('documents', { create: true });
+      folder = await folder.getDirectoryHandle('opening-inventory', { create: true });
+    } catch (e) {
+      folder = _dirHandle;
+    }
+    const base = openingInventoryBasename(doc);
+    for (const [name, body] of [
+      [`${base}.csv`, openingInventoryCsv(doc)],
+      [`${base}.json`, JSON.stringify(doc, null, 2)],
+    ]) {
+      const fh = await folder.getFileHandle(name, { create: true });
+      const w = await fh.createWritable();
+      await w.write(body);
+      await w.close();
+    }
+  } catch (e) {
+    console.warn('[documents] cloud write failed', e);
+  }
+}
+
+async function renderDocuments() {
+  const root = q('docsContent');
+  if (!root) return;
+
+  let doc = findOpeningInventoryDoc();
+  const liveCount = getOpeningBuyTransactions().length;
+
+  // First visit: auto-archive if live opening stock exists and no frozen doc yet
+  if (!doc && liveCount > 0) {
+    doc = await archiveOpeningInventoryDocument({ silent: true, download: true });
+    if (doc) toast(`已自動封存並下載期初庫存清單（${doc.totals.lineCount} 項）`, 's');
+  }
+
+  const liveHint = liveCount
+    ? `目前商業庫存中有 <strong>${liveCount}</strong> 筆期初庫存交易可作為來源。`
+    : '目前沒有商業「期初庫存」交易。請先在商業庫存以來源「期初庫存」入帳。';
+
+  let body = `
+    <div class="docs-hero">
+      <div>
+        <p class="docs-eyebrow">稅務佐證檔案庫</p>
+        <h2 class="docs-title">相關文件</h2>
+        <p class="docs-lead">封存開業期初庫存等不計入 KOR 的證明文件，與日常營業額分開保存。</p>
+      </div>
+      <div class="docs-actions">
+        <button class="btn-primary" id="btnArchiveOpening">${doc ? '重新產生並封存' : '產生並封存期初庫存'}</button>
+        ${doc ? `<button class="btn-secondary" id="btnDownloadOpening">下載 CSV / JSON</button>` : ''}
+      </div>
+    </div>
+    <p class="docs-live-hint">${liveHint}</p>
+  `;
+
+  if (!doc) {
+    body += `
+      <div class="panel docs-empty">
+        <p class="panel-title">尚無期初庫存文件</p>
+        <p class="panel-desc">點上方按鈕，系統會依商業庫存中「期初庫存」交易產生清單並封存。此清單 <strong>不計入 KOR 營業額</strong>，僅作為 IB 存貨成本基礎與查核佐證。</p>
+      </div>`;
+    root.innerHTML = body;
+    q('btnArchiveOpening')?.addEventListener('click', async () => {
+      await archiveOpeningInventoryDocument({ force: true });
+      renderDocuments();
+    });
+    return;
+  }
+
+  const rowsHtml = (doc.rows || []).map(r => `
+    <tr>
+      <td class="mono">${esc(r.sku)}</td>
+      <td>${esc(r.name_detail)}</td>
+      <td class="col-num">${r.qty}</td>
+      <td class="mono">${esc(r.transfer_date)}</td>
+      <td class="col-num">${eur(r.market_value_eur)}</td>
+      <td class="col-num-strong">${eur(r.line_total_eur)}</td>
+      <td class="docs-evidence">${esc(r.evidence_filename || '—')}</td>
+    </tr>
+  `).join('');
+
+  body += `
+    <div class="panel docs-doc">
+      <div class="panel-hd">
+        <div>
+          <p class="panel-title">${esc(doc.title)}</p>
+          <p class="docs-meta">
+            轉入日 ${esc(doc.transferDate || '—')} ·
+            ${esc(doc.meta?.company || '—')} ·
+            KVK ${esc(doc.meta?.kvk || '—')} ·
+            封存 ${esc((doc.updatedAt || doc.createdAt || '').slice(0, 19).replace('T', ' '))}
+          </p>
+        </div>
+        <span class="docs-badge">不計入 KOR</span>
+      </div>
+      <p class="docs-disclaimer">${esc(doc.disclaimer || '')}</p>
+      <div class="docs-stats">
+        <div><span class="sl">品項</span><span class="sv">${doc.totals?.lineCount ?? 0}</span></div>
+        <div><span class="sl">數量合計</span><span class="sv">${doc.totals?.qty ?? 0}</span></div>
+        <div><span class="sl">入帳市價合計</span><span class="sv">${eur(doc.totals?.marketValueEur || 0)}</span></div>
+      </div>
+      <div class="inv-table-wrap docs-table-wrap">
+        <table class="inv-table docs-table">
+          <thead>
+            <tr>
+              <th>商品編號</th>
+              <th>詳細品名 / 版本 / 品相</th>
+              <th class="col-num">數量</th>
+              <th>轉入日期</th>
+              <th class="col-num">入帳市價</th>
+              <th class="col-num">小計</th>
+              <th>市價截圖檔名</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml || `<tr><td colspan="7" style="color:var(--t3)">無資料列</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  root.innerHTML = body;
+
+  q('btnArchiveOpening')?.addEventListener('click', async () => {
+    const ok = await confirm2Async(
+      '重新產生會以「目前商業期初庫存交易」覆寫已封存清單，並再次下載 CSV/JSON。確定繼續？',
+      '重新封存'
+    );
+    if (!ok) return;
+    await archiveOpeningInventoryDocument({ force: true });
+    renderDocuments();
+  });
+  q('btnDownloadOpening')?.addEventListener('click', () => {
+    downloadOpeningInventoryFiles(doc);
+    toast('已下載 CSV 與 JSON', 's');
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
 //  BACKUP / RESTORE
 // ══════════════════════════════════════════════════════════════
 function exportJson() {
@@ -4543,6 +4983,7 @@ function exportJson() {
     products:     DB.products,
     transactions: DB.transactions,
     expenses:     DB.expenses,
+    documents:    ensureDocumentsArray(),
     settings:     DB.settings,
   };
   const blob = new Blob([JSON.stringify(exportData, null, 2)], {type:'application/json'});
@@ -4565,10 +5006,11 @@ function importJson(file) {
       const parsed = JSON.parse(e.target.result);
       // Accept original PokeLedger format (products + transactions) or new format
       if (!Array.isArray(parsed.products)) throw new Error('格式錯誤：缺少 products');
-      confirm2('匯入將覆蓋所有現有資料（交易、庫存、費用），確認繼續？', ()=>{
+      confirm2('匯入將覆蓋所有現有資料（交易、庫存、費用、文件），確認繼續？', ()=>{
         DB.products     = parsed.products     || [];
         DB.transactions = parsed.transactions || [];
         DB.expenses     = parsed.expenses     || [];
+        DB.documents    = Array.isArray(parsed.documents) ? parsed.documents : [];
         DB.settings     = { ...DEFAULT.settings, ...(parsed.settings||{}) };
         save();
         toast('資料匯入成功，重新整理中…','s');
@@ -4899,7 +5341,8 @@ async function cloudAutoSave(manual = false) {
     const writable   = await fileHandle.createWritable();
     const payload    = JSON.stringify({
       products: DB.products, transactions: DB.transactions,
-      expenses: DB.expenses, settings: DB.settings,
+      expenses: DB.expenses, documents: ensureDocumentsArray(),
+      settings: DB.settings,
       _savedAt: new Date().toISOString(),
     }, null, 2);
     await writable.write(payload);
@@ -4939,6 +5382,7 @@ async function cloudAutoLoad() {
         DB.products     = parsed.products     || [];
         DB.transactions = parsed.transactions || [];
         DB.expenses     = parsed.expenses     || [];
+        DB.documents    = Array.isArray(parsed.documents) ? parsed.documents : [];
         DB.settings     = { ...DEFAULT.settings, ...(parsed.settings||{}) };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
         toast('雲端資料已載入！', 's');
@@ -5012,6 +5456,7 @@ async function init() {
   updateKor();
   switchTab('dashboard');
   await initCloud();
+  maybeToastTaxDeadline();
 
   // First-time welcome
   if (!DB.products.length && !DB.settings.company) {

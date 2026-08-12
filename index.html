@@ -47,6 +47,7 @@
         <a class="nav-link" data-tab="expenses"><span class="nav-ico">💸</span><span>費用記錄</span></a>
         <a class="nav-link" data-tab="reports"><span class="nav-ico">📋</span><span>損益報表</span></a>
         <a class="nav-link" data-tab="calendar"><span class="nav-ico">📅</span><span>報稅行事曆</span></a>
+        <a class="nav-link" data-tab="documents"><span class="nav-ico">📁</span><span>相關文件</span></a>
       </nav>
     </div>
 
@@ -106,7 +107,8 @@
             <div id="dashRecent"></div>
           </div>
           <div class="panel">
-            <div class="panel-hd"><span class="panel-title">📅 報稅截止日</span></div>
+            <div class="panel-hd"><span class="panel-title">📅 報稅截止日</span><a class="link-btn" data-tab="calendar">完整行事曆 →</a></div>
+            <div id="dashTaxNext" class="tax-next" style="display:none"></div>
             <div id="dashDeadlines"></div>
           </div>
         </div>
@@ -229,13 +231,18 @@
         <div id="calContent"></div>
       </div>
 
+      <!-- ── DOCUMENTS ── -->
+      <div class="view" id="view-documents">
+        <div id="docsContent"></div>
+      </div>
+
       <!-- ── SETTINGS ── -->
       <div class="view" id="view-settings">
         <div class="settings-cols">
           <div class="panel">
             <p class="panel-title">🏢 公司資料</p>
-            <div class="fg"><label>公司名稱</label><input type="text" id="setCo" class="finp" placeholder="你的公司名稱"/></div>
-            <div class="fg"><label>KVK 號碼</label><input type="text" id="setKvk" class="finp" placeholder="12345678"/></div>
+            <div class="fg"><label>公司名稱</label><input type="text" id="setCo" class="finp" placeholder="Yi Trading"/></div>
+            <div class="fg"><label>KVK 號碼</label><input type="text" id="setKvk" class="finp" placeholder="42131151"/></div>
             <div class="fg"><label>KOR 開始日期</label><input type="date" id="setKorStart" class="finp"/></div>
             <div class="fg"><label>目前稅年</label><select id="setYear" class="finp"><option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option></select></div>
             <button class="btn-primary" id="btnSaveSettings">儲存</button>
