@@ -319,35 +319,91 @@ input, select { font-family: var(--font); }
 /* ─── INVENTORY TREE TABLE ─── */
 .inv-table-wrap {
   background: var(--s1); border: 1px solid var(--b1);
-  border-radius: var(--r2); overflow-x: auto;
+  border-radius: var(--r3); overflow-x: auto;
+  box-shadow: 0 1px 3px rgba(15,23,42,.04);
 }
 .inv-table {
   width: 100%; border-collapse: collapse; font-size: .81rem; text-align: left;
-  min-width: 900px;
+  min-width: 960px; font-variant-numeric: tabular-nums;
 }
 .inv-table th {
-  background: var(--s2); color: var(--t2); font-weight: 700;
-  padding: .6rem .75rem; border-bottom: 1px solid var(--b1);
-  white-space: nowrap; font-size: .7rem; text-transform: uppercase; letter-spacing: .3px;
+  background: var(--s2); color: var(--t3); font-weight: 700;
+  padding: .65rem .8rem; border-bottom: 2px solid var(--b1);
+  white-space: nowrap; font-size: .68rem; text-transform: uppercase; letter-spacing: .45px;
+  position: sticky; top: 0; z-index: 1;
 }
 .inv-table td {
-  padding: .55rem .75rem; border-bottom: 1px solid var(--b1);
+  padding: .62rem .8rem; border-bottom: 1px solid var(--b1);
   color: var(--t1); white-space: nowrap; vertical-align: middle;
 }
-.inv-table tr.parent-row { background: var(--s1); font-weight: 600; }
-.inv-table tr.parent-row:hover { background: var(--s2); }
-.inv-table tr.child-row { background: var(--s2); font-size: .74rem; color: var(--t2); }
-.inv-table tr.child-row:hover { background: var(--s3); }
+.inv-table tbody tr:last-child td { border-bottom: none; }
+.inv-table tr[data-id] { cursor: pointer; transition: background .12s; }
+.inv-table tr.parent-row { background: var(--s1); }
+.inv-table tr.parent-row:hover { background: rgba(248,250,252,.9); }
+.inv-table tr.child-row { background: rgba(248,250,252,.55); }
+.inv-table tr.child-row:hover { background: var(--s2); }
 
-.tree-tree-cell { display: flex; align-items: center; gap: .4rem; }
-.tree-toggle {
-  cursor: pointer; user-select: none; width: 14px; flex-shrink: 0;
-  text-align: center; color: var(--t3); font-size: .7rem;
-  transition: transform .15s;
+.inv-table .col-name { min-width: 210px; max-width: 320px; }
+.inv-table .col-num {
+  text-align: right; font-family: var(--mono); font-size: .78rem; color: var(--t2);
 }
-.inv-table td.tree-child-cell { padding-left: 1.75rem; }
+.inv-table .col-num-strong {
+  text-align: right; font-family: var(--mono); font-size: .78rem;
+  font-weight: 800; color: var(--t1);
+}
+.inv-table .col-num-muted {
+  text-align: right; font-family: var(--mono); font-size: .78rem; color: var(--t3);
+}
+.inv-table .col-center { text-align: center; font-size: .76rem; }
+.inv-table .col-gold {
+  text-align: right; font-family: var(--mono); font-size: .78rem;
+  font-weight: 800; color: var(--gold);
+}
+.inv-table th.col-num,
+.inv-table th.col-center,
+.inv-table th.col-gold { color: var(--t3); font-weight: 700; }
+.inv-table th.col-gold { text-align: right; }
 
-.mkt-cell { text-align: right; }
+.tree-name-cell {
+  display: flex; align-items: center; gap: .55rem; min-width: 0;
+}
+.tree-name {
+  font-weight: 700; color: var(--t1); line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.child-row .tree-name { font-weight: 600; font-size: .78rem; color: var(--t2); }
+
+.tree-toggle-btn {
+  width: 24px; height: 24px; flex-shrink: 0;
+  border: 1px solid var(--b1); border-radius: 7px;
+  background: var(--s2); color: var(--t2);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+.tree-toggle-btn:hover {
+  background: var(--s1); border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(217,119,6,.1);
+}
+.tree-toggle-btn .chevron {
+  width: 7px; height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform .2s ease;
+}
+.tree-toggle-btn.collapsed .chevron {
+  transform: rotate(-45deg) translate(1px, 1px);
+}
+.tree-toggle-spacer { width: 24px; flex-shrink: 0; }
+
+.inv-table td.tree-child-cell .tree-name-cell {
+  padding-left: .85rem;
+  margin-left: 11px;
+  border-left: 2px solid var(--b2);
+}
+
+.mkt-cell { text-align: right; padding-right: .8rem !important; }
 .mkt-edit-btn {
   background: none; border: none; padding: .15rem .35rem;
   font-family: var(--mono); font-weight: 700; font-size: inherit;

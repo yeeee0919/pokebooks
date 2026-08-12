@@ -3426,23 +3426,25 @@ function renderInventoryPage(scopeF = 'biz') {
     const profitCls  = m.realizedProfit > 0 ? 'badge-pos' : m.realizedProfit < 0 ? 'badge-neg' : 'badge-flat';
 
     rowsHtml += `<tr class="parent-row" data-id="${p.id}">
-      <td>
-        <div class="tree-tree-cell">
-          ${hasChildren ? `<span class="tree-toggle" data-toggle="${p.id}">${isCollapsed ? '►' : '▼'}</span>` : ''}
-          <span style="font-weight:700">${esc(p.name)}</span>
+      <td class="col-name">
+        <div class="tree-name-cell">
+          ${hasChildren
+            ? `<button type="button" class="tree-toggle-btn${isCollapsed ? ' collapsed' : ''}" data-toggle="${p.id}" aria-label="${isCollapsed ? '展開' : '收合'}"><span class="chevron"></span></button>`
+            : `<span class="tree-toggle-spacer"></span>`}
+          <span class="tree-name">${esc(p.name)}</span>
           <span class="type-badge ${esc(p.type)}">${esc(p.type)}</span>
         </div>
       </td>
-      <td class="mono" style="text-align:right">${m.totalBuyQty || '—'}</td>
-      <td class="mono" style="text-align:right">${m.totalSellQty || '—'}</td>
-      <td class="mono" style="text-align:right;font-weight:800">${m.remainQty}</td>
-      <td class="mono" style="text-align:right;color:var(--t2)">${m.wacc > 0 ? eur(m.wacc) : '—'}</td>
-      <td class="mono mkt-cell">${marketPriceCellHtml(p.id, m.marketPrice)}</td>
-      <td class="mono ${changeCls}" style="text-align:right">${m.wacc > 0 && m.marketPrice > 0 ? changeSign + m.priceChangePct.toFixed(1) + '%' : '—'}</td>
-      <td class="mono" style="text-align:right">${m.totalInvestment > 0 ? eur(m.totalInvestment) : '€0'}</td>
-      <td class="mono ${profitCls}" style="text-align:right">${m.realizedProfit !== 0 ? profitSign + eur(m.realizedProfit) : '€0'}</td>
-      <td style="text-align:center" class="${m.breakEvenCls}">${m.breakEvenText}</td>
-      <td class="mono" style="text-align:right;font-weight:800;color:var(--gold)">${m.totalMarketVal > 0 ? eur(m.totalMarketVal) : '€0'}</td>
+      <td class="col-num">${m.totalBuyQty || '—'}</td>
+      <td class="col-num">${m.totalSellQty || '—'}</td>
+      <td class="col-num-strong">${m.remainQty}</td>
+      <td class="col-num-muted">${m.wacc > 0 ? eur(m.wacc) : '—'}</td>
+      <td class="mkt-cell">${marketPriceCellHtml(p.id, m.marketPrice)}</td>
+      <td class="col-num ${changeCls}">${m.wacc > 0 && m.marketPrice > 0 ? changeSign + m.priceChangePct.toFixed(1) + '%' : '—'}</td>
+      <td class="col-num">${m.totalInvestment > 0 ? eur(m.totalInvestment) : '€0'}</td>
+      <td class="col-num ${profitCls}">${m.realizedProfit !== 0 ? profitSign + eur(m.realizedProfit) : '€0'}</td>
+      <td class="col-center ${m.breakEvenCls}">${m.breakEvenText}</td>
+      <td class="col-gold">${m.totalMarketVal > 0 ? eur(m.totalMarketVal) : '€0'}</td>
     </tr>`;
 
     // Render children if not collapsed
@@ -3459,23 +3461,23 @@ function renderInventoryPage(scopeF = 'biz') {
         const cProfitCls  = cm.realizedProfit > 0 ? 'badge-pos' : cm.realizedProfit < 0 ? 'badge-neg' : 'badge-flat';
 
         rowsHtml += `<tr class="child-row" data-id="${ch.id}">
-          <td class="tree-child-cell">
-            <div class="tree-tree-cell">
-              <span style="color:var(--b2);margin-right:4px">└</span>
-              <span style="font-weight:600">${esc(ch.name)}</span>
+          <td class="col-name tree-child-cell">
+            <div class="tree-name-cell">
+              <span class="tree-toggle-spacer"></span>
+              <span class="tree-name">${esc(ch.name)}</span>
               <span class="type-badge ${esc(ch.type)}">${esc(ch.type)}</span>
             </div>
           </td>
-          <td class="mono" style="text-align:right">${cm.totalBuyQty || '—'}</td>
-          <td class="mono" style="text-align:right">${cm.totalSellQty || '—'}</td>
-          <td class="mono" style="text-align:right;font-weight:800">${cm.remainQty}</td>
-          <td class="mono" style="text-align:right;color:var(--t2)">${cm.wacc > 0 ? eur(cm.wacc) : '—'}</td>
-          <td class="mono mkt-cell">${marketPriceCellHtml(ch.id, cm.marketPrice)}</td>
-          <td class="mono ${cChangeCls}" style="text-align:right">${cm.wacc > 0 && cm.marketPrice > 0 ? cChangeSign + cm.priceChangePct.toFixed(1) + '%' : '—'}</td>
-          <td class="mono" style="text-align:right">${cm.totalInvestment > 0 ? eur(cm.totalInvestment) : '€0'}</td>
-          <td class="mono ${cProfitCls}" style="text-align:right">${cm.realizedProfit !== 0 ? cProfitSign + eur(cm.realizedProfit) : '€0'}</td>
-          <td style="text-align:center" class="${cm.breakEvenCls}">${cm.breakEvenText}</td>
-          <td class="mono" style="text-align:right;font-weight:800;color:var(--gold)">${cm.totalMarketVal > 0 ? eur(cm.totalMarketVal) : '€0'}</td>
+          <td class="col-num">${cm.totalBuyQty || '—'}</td>
+          <td class="col-num">${cm.totalSellQty || '—'}</td>
+          <td class="col-num-strong">${cm.remainQty}</td>
+          <td class="col-num-muted">${cm.wacc > 0 ? eur(cm.wacc) : '—'}</td>
+          <td class="mkt-cell">${marketPriceCellHtml(ch.id, cm.marketPrice)}</td>
+          <td class="col-num ${cChangeCls}">${cm.wacc > 0 && cm.marketPrice > 0 ? cChangeSign + cm.priceChangePct.toFixed(1) + '%' : '—'}</td>
+          <td class="col-num">${cm.totalInvestment > 0 ? eur(cm.totalInvestment) : '€0'}</td>
+          <td class="col-num ${cProfitCls}">${cm.realizedProfit !== 0 ? cProfitSign + eur(cm.realizedProfit) : '€0'}</td>
+          <td class="col-center ${cm.breakEvenCls}">${cm.breakEvenText}</td>
+          <td class="col-gold">${cm.totalMarketVal > 0 ? eur(cm.totalMarketVal) : '€0'}</td>
         </tr>`;
       });
     }
@@ -3483,26 +3485,26 @@ function renderInventoryPage(scopeF = 'biz') {
 
   wrap.innerHTML = `<table class="inv-table">
     <thead><tr>
-      <th>項目名稱</th>
-      <th style="text-align:right">購入</th>
-      <th style="text-align:right">售出</th>
-      <th style="text-align:right">剩餘</th>
-      <th style="text-align:right">均進價</th>
-      <th style="text-align:right">市值/張 <span class="col-hint" title="管理用參考價，點數字可編輯；商業/私人共用，不影響銷售">ⓘ</span></th>
-      <th style="text-align:right">漲跌幅</th>
-      <th style="text-align:right">總投入</th>
-      <th style="text-align:right">已實現利潤</th>
-      <th style="text-align:center">回本進度</th>
-      <th style="text-align:right">現貨市值</th>
+      <th class="col-name">項目名稱</th>
+      <th class="col-num">購入</th>
+      <th class="col-num">售出</th>
+      <th class="col-num">剩餘</th>
+      <th class="col-num">均進價</th>
+      <th class="col-num">市值/張 <span class="col-hint" title="管理用參考價，點數字可編輯；商業/私人共用，不影響銷售">ⓘ</span></th>
+      <th class="col-num">漲跌幅</th>
+      <th class="col-num">總投入</th>
+      <th class="col-num">已實現利潤</th>
+      <th class="col-center">回本進度</th>
+      <th class="col-gold">現貨市值</th>
     </tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>`;
 
   // Wire tree toggle
-  wrap.querySelectorAll('.tree-toggle').forEach(t => {
-    t.addEventListener('click', e => {
+  wrap.querySelectorAll('.tree-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
       e.stopPropagation();
-      const pid = t.dataset.toggle;
+      const pid = btn.dataset.toggle;
       if (_collapsedParents.has(pid)) _collapsedParents.delete(pid);
       else _collapsedParents.add(pid);
       renderInventoryPage(scopeF);
