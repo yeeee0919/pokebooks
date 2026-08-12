@@ -3765,7 +3765,8 @@ function renderTxTableForScope(scopeKey, rows) {
     return;
   }
 
-  container.innerHTML = `<div class="tx-scroll-hint">← 左右滑動查看更多 →</div>
+  const isSplit = q('txSplitContainer')?.classList.contains('view-all');
+  container.innerHTML = `${isSplit ? '<div class="tx-scroll-hint">← 左右滑動看完整欄位 →</div>' : ''}
   <div class="tx-wrap"><table class="tx-table">
     <thead><tr>
       <th class="col-check"><input type="checkbox" class="chk-select-all-scope" data-scope="${scopeKey}" title="全選"/></th>
@@ -3777,9 +3778,9 @@ function renderTxTableForScope(scopeKey, rows) {
       const gpCls = r.grossProfit != null ? (r.grossProfit >= 0 ? 'sell' : 'buy') : '';
       return `<tr>
         <td class="col-check"><input type="checkbox" class="chk-tx" data-id="${t.id}"/></td>
-        <td class="mono col-date">${t.date}</td>
+        <td class="mono col-date" title="${t.date}">${t.date}</td>
         <td class="col-type">${txBadge(t.type)}</td>
-        <td class="col-product tx-product-name">${esc(r.productName)}</td>
+        <td class="col-product"><span class="tx-product-name" title="${esc(r.productName)}">${esc(r.productName)}</span></td>
         <td class="mono col-qty">${t.quantity}</td>
         <td class="amount col-amt ${r.isSell?'sell':'buy'}">${r.isSell?'':'−'}${eur(r.total)}</td>
         <td class="mono col-cogs">${r.cogs!=null?eur(r.cogs):'—'}</td>
@@ -4683,6 +4684,7 @@ function wireEvents() {
       btn.setAttribute('aria-selected', 'true');
       const container = q('txSplitContainer');
       if (container) container.className = 'tx-split-container view-' + btn.dataset.txView;
+      renderTransactions();
     });
   });
 
