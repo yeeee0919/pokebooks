@@ -4671,7 +4671,11 @@ function isOpeningBuyTx(t) {
   if (ScopeLedger.normalizeScope(t, DB.transactions) !== 'biz') return false;
   const platform = t.platform || '';
   const note = t.note || '';
-  return platform === 'initial' || note === '初始庫存' || note === '期初庫存';
+  // 開業轉入：期初庫存、或私人轉入商業（Privéstorting）都算 inbreng，不計 KOR
+  return platform === 'initial'
+    || platform === 'prive_storting'
+    || note === '初始庫存'
+    || note === '期初庫存';
 }
 
 function productNameDetail(p) {
@@ -4741,7 +4745,7 @@ async function archiveOpeningInventoryDocument({ force = false, silent = false, 
 
   const rows = await buildOpeningInventoryRows();
   if (!rows.length) {
-    if (!silent) toast('沒有商業「期初庫存」交易可封存。請先在商業庫存以來源「期初庫存」入帳。', 'w');
+    if (!silent) toast('沒有可封存的開業轉入。請到「商業庫存」新增進貨，來源選「期初庫存」或「來自私人」。', 'w');
     return null;
   }
 
@@ -4874,8 +4878,8 @@ async function renderDocuments() {
   }
 
   const liveHint = liveCount
-    ? `目前商業庫存中有 <strong>${liveCount}</strong> 筆期初庫存交易可作為來源。`
-    : '目前沒有商業「期初庫存」交易。請先在商業庫存以來源「期初庫存」入帳。';
+    ? `目前商業庫存中有 <strong>${liveCount}</strong> 筆開業轉入（期初庫存／來自私人）可封存。`
+    : '目前沒有開業轉入紀錄。請到「商業庫存」新增進貨，來源選「期初庫存」或「來自私人」，帳戶選「商業」。';
 
   let body = `
     <div class="docs-hero">
