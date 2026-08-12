@@ -3590,7 +3590,7 @@ function platformLabel(platform) {
     CM: 'Cardmarket',
     Vinted: 'Vinted',
     '面交': '現場面交',
-    prive_storting: '私人注資',
+    prive_storting: '來自私人',
   };
   return map[platform] || platform || '—';
 }
@@ -3999,6 +3999,7 @@ function openModalProduct(editId=null) {
   setScopeValue('pBuyScope', defaultScope);
   proofStageClear('product');
   renderProofThumbs('product');
+  updateProductBuyHint();
 
   openModal('mProduct');
 }
@@ -4129,11 +4130,27 @@ function updateBuyHint() {
     nl_inperson:    '建議保留：Revolut 付款截圖、聊天談價記錄',
     tw_social:      '建議保留：LINE 對話截圖、台灣銀行轉帳記錄、匯率截圖',
     cardmarket:     '建議保留：Cardmarket 訂單確認截圖',
-    prive_storting: '💡 Privéstorting（私人卡片/資金投入公司）：建議保留個人購入憑證或對話截圖，方便報稅與查帳歸因',
+    prive_storting: '💡 來自私人（Privéstorting）：私人收藏投入公司。建議保留個人購入憑證或對話截圖，方便報稅歸因',
     initial:        '建議保留：Cardmarket 市場趨勢截圖或 eBay Sold Price 截圖作為公平市值佐證',
   };
   q('buySourceHint').textContent = hints[src]||'';
   q('buySourceHint').style.display = hints[src]?'block':'none';
+}
+
+function updateProductBuyHint() {
+  const src = q('pBuySource')?.value || '';
+  const hint = q('pBuySourceHint');
+  if (!hint) return;
+  const hints = {
+    prive_storting: '💡 來自私人：這批卡是從私人收藏轉入商業庫存（Privéstorting）。建議上傳個人購入憑證；帳戶歸屬請選「商業」。',
+    initial: '建議保留：市值佐證截圖（Cardmarket / eBay Sold）作為期初公允價值依據',
+    nl_inperson: '建議保留：Revolut 付款截圖、聊天談價記錄',
+    tw_social: '建議保留：LINE 對話、轉帳紀錄、匯率截圖',
+    cardmarket: '建議保留：Cardmarket 訂單確認截圖',
+  };
+  hint.textContent = hints[src] || '';
+  hint.style.display = hints[src] ? 'block' : 'none';
+  if (src === 'prive_storting') setScopeValue('pBuyScope', 'biz');
 }
 
 q('btnSaveBuy').addEventListener('click', ()=>{
