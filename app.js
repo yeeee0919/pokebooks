@@ -3579,65 +3579,149 @@ function openMarketPriceEditor(btn, scopeF) {
 // ══════════════════════════════════════════════════════════════
 //  PRODUCT DETAIL PANEL
 // ══════════════════════════════════════════════════════════════
+let _detailCtx = { productId: null, scope: 'all' };
+
+function platformLabel(platform) {
+  const map = {
+    initial: '期初庫存',
+    nl_inperson: '荷蘭現場',
+    tw_social: '台灣社團',
+    cardmarket: 'Cardmarket',
+    CM: 'Cardmarket',
+    Vinted: 'Vinted',
+    '面交': '現場面交',
+    prive_storting: '私人注資',
+  };
+  return map[platform] || platform || '—';
+}
+
 function openDetail(productId, scope = 'all') {
-  const p   = DB.products.find(x=>x.id===productId);
+  const p = DB.products.find(x => x.id === productId);
   if (!p) return;
+  _detailCtx = { productId, scope };
+
   const qty  = getQty(p.id, scope);
   const wacc = getWACC(p.id, '9999-99-99', scope);
+  const scopeBadge = scope === 'biz' ? '🏢 商業帳戶' : (scope === 'priv' ? '👤 私人帳戶' : '🌐 所有帳戶');
 
   q('detailName').textContent = p.name;
-  
-  // Set subtitle or badge for details panel scope
-  const scopeBadge = scope === 'biz' ? '🏢 商業帳戶' : (scope === 'priv' ? '👤 私人帳戶' : '🌐 所有帳戶');
-  q('detailMeta').textContent = scopeBadge + ' · ' + [p.type, p.language, p.notes].filter(Boolean).join(' · ');
+  q('detailMeta').textContent = scopeBadge + ' · ' + [p.type, p.language].filter(Boolean).join(' · ');
+  q('dEditId').value = p.id;
+  q('dName').value = p.name || '';
+  q('dType').value = p.type || '單卡';
+  q('dLang').value = p.language || '英文';
+  q('dMarket').value = p.marketPriceEUR || '';
+  q('dNotes').value = p.notes || '';
 
-  // Stats
-  const sold = DB.transactions.filter(t=>t.type==='SELL'&&t.productId===productId&&ScopeLedger.matchesScope(t, scope, DB.transactions)).reduce((s,t)=>s+t.quantity,0);
-  const rev  = DB.transactions.filter(t=>t.type==='SELL'&&t.productId===productId&&ScopeLedger.matchesScope(t, scope, DB.transactions)).reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
+  const parentSel = q('dParent');
+  parentSel.innerHTML = '<option value="">— 無（獨立商品）—</option>' +
+    DB.products.filter(x => x.id !== productId).map(x =>
+      `<option value="${x.id}"${p.parentId === x.id ? ' selected' : ''}>${esc(x.name)}</option>`
+    ).join('');
+
+  const sold = DB.transactions
+    .filter(t => t.type === 'SELL' && t.productId === productId && ScopeLedger.matchesScope(t, scope, DB.transactions))
+    .reduce((s, t) => s + t.quantity, 0);
+  const rev = DB.transactions
+    .filter(t => t.type === 'SELL' && t.productId === productId && ScopeLedger.matchesScope(t, scope, DB.transactions))
+    .reduce((s, t) => s + t.quantity * (t.pricePerUnitEUR || 0), 0);
+
   q('detailStats').innerHTML = `
     <div class="ds-item"><div class="ds-label">在庫</div><div class="ds-val">${qty} 張</div></div>
     <div class="ds-item"><div class="ds-label">平均成本</div><div class="ds-val gold">${eur(wacc)}</div></div>
-    <div class="ds-item"><div class="ds-label">市值</div><div class="ds-val">${p.marketPriceEUR?eur(p.marketPriceEUR):'—'}</div></div>
+    <div class="ds-item"><div class="ds-label">市值</div><div class="ds-val">${p.marketPriceEUR ? eur(p.marketPriceEUR) : '—'}</div></div>
     <div class="ds-item"><div class="ds-label">累計賣出</div><div class="ds-val">${sold} 張</div></div>
     <div class="ds-item"><div class="ds-label">累計銷售額</div><div class="ds-val green">${eur(rev)}</div></div>
-    <div class="ds-item"><div class="ds-label">帳面庫存值</div><div class="ds-val">${eur(wacc*qty)}</div></div>`;
+    <div class="ds-item"><div class="ds-label">帳面庫存值</div><div class="ds-val">${eur(wacc * qty)}</div></div>`;
 
-  // Buttons
-  q('detailBtnSell').onclick  = ()=>{ closeDetail(); openModalSell(productId, null, scope); };
-  q('detailBtnBuy').onclick   = ()=>{ closeDetail(); openModalBuy(productId, null, scope); };
-  q('detailBtnGrade').onclick = ()=>{ closeDetail(); openModalGrade(productId); };
-  q('detailBtnEdit').onclick  = ()=>{ closeDetail(); openModalProduct(productId); };
-  q('detailBtnSell').disabled = qty===0;
+  q('detailBtnSell').onclick = () => { openModalSell(productId, null, scope); };
+  q('detailBtnBuy').onclick  = () => { openModalBuy(productId, null, scope); };
+  q('detailBtnGrade').onclick = () => { openModalGrade(productId); };
+  q('detailBtnSell').disabled = qty === 0;
 
-  // Tx history
-  const txns = Ledger.query({ productId, scope, enrich: false });
+  renderDetailTransactions(productId, scope);
 
-  q('detailTxList').innerHTML = txns.length ? `
-    <div class="tx-wrap" style="margin-top:.35rem">
-    <table class="tx-table">
-      <thead><tr><th>日期</th><th>類型</th><th>數量</th><th>單價</th><th>金額</th><th>平台</th></tr></thead>
-      <tbody>${txns.map(t=>{
-        const isSell = t.type==='SELL';
-        const total  = t.quantity*(t.pricePerUnitEUR||0);
-        return `<tr>
-          <td class="mono">${t.date}</td>
-          <td>${txBadge(t.type)}</td>
-          <td class="mono">${t.quantity}</td>
-          <td class="mono">${eur(t.pricePerUnitEUR||0)}</td>
-          <td class="amount ${isSell?'sell':'buy'}">${isSell?'+':'-'}${eur(total)}</td>
-          <td>${esc(t.platform||t.note||'—')}</td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table></div>` : '<p class="empty-sm" style="margin-top:.5rem">尚無交易記錄</p>';
-
-  // Show panel
   q('detailPanel').classList.add('open');
   q('detailBackdrop').classList.add('open');
+}
+
+function renderDetailTransactions(productId, scope) {
+  const txns = Ledger.query({ productId, scope, enrich: false });
+  const el = q('detailTxList');
+  if (!txns.length) {
+    el.innerHTML = '<p class="empty-sm" style="margin-top:.35rem">尚無交易記錄</p>';
+    return;
+  }
+
+  el.innerHTML = `<div class="tx-wrap detail-tx-wrap">
+    <table class="tx-table detail-tx-table">
+      <thead><tr>
+        <th>日期</th><th>類型</th><th>帳戶</th><th>數量</th><th>單價</th>
+        <th>金額</th><th>平台/來源</th><th>手續費</th><th>備註</th><th></th>
+      </tr></thead>
+      <tbody>${txns.map(t => {
+        const isSell = t.type === 'SELL';
+        const total = t.quantity * (t.pricePerUnitEUR || 0);
+        const sc = ScopeLedger.normalizeScope(t, DB.transactions);
+        const scLabel = sc === 'biz' ? '🏢 商業' : '👤 私人';
+        const paired = t.pairId ? ' · 有配對' : '';
+        return `<tr class="detail-tx-row" data-id="${t.id}" title="點擊編輯此筆交易">
+          <td class="mono">${t.date}</td>
+          <td>${txBadge(t.type)}</td>
+          <td style="font-size:.72rem;white-space:nowrap">${scLabel}${paired}</td>
+          <td class="mono">${t.quantity}</td>
+          <td class="mono">${eur(t.pricePerUnitEUR || 0)}</td>
+          <td class="amount ${isSell ? 'sell' : 'buy'}">${isSell ? '+' : '−'}${eur(total)}</td>
+          <td>${esc(platformLabel(t.platform))}</td>
+          <td class="mono">${isSell ? eur(t.fee || 0) : '—'}</td>
+          <td class="tx-note-cell" title="${esc(t.note || '')}">${esc(t.note || '—')}</td>
+          <td><span class="detail-tx-edit">編輯</span></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>
+  <p class="field-hint">若同一張卡出現兩筆相同進貨：選「商業」時會同時建立商業＋私人各一筆；在「私人庫存」應只看到私人那一筆。若私人也出現兩筆，多半是存了兩次，點其中一筆刪除即可。</p>`;
+
+  el.querySelectorAll('.detail-tx-row').forEach(row => {
+    row.addEventListener('click', () => editTransaction(row.dataset.id));
+  });
+}
+
+function saveDetailProduct() {
+  const id = q('dEditId').value;
+  const p = DB.products.find(x => x.id === id);
+  if (!p) return;
+
+  const name = q('dName').value.trim();
+  if (!name) return toast('請輸入商品名稱', 'e');
+
+  p.name = name;
+  p.type = q('dType').value;
+  p.language = q('dLang').value;
+  p.marketPriceEUR = parseFloat(q('dMarket').value) || 0;
+  p.parentId = q('dParent').value || undefined;
+  p.notes = q('dNotes').value.trim() || undefined;
+
+  save();
+  refreshCurrentView();
+  openDetail(id, _detailCtx.scope);
+  toast('商品資料已更新', 's');
+}
+
+function refreshDetailIfOpen() {
+  if (!q('detailPanel')?.classList.contains('open')) return;
+  if (!_detailCtx.productId) return;
+  if (!DB.products.find(x => x.id === _detailCtx.productId)) {
+    closeDetail();
+    return;
+  }
+  openDetail(_detailCtx.productId, _detailCtx.scope);
 }
 
 function closeDetail() {
   q('detailPanel').classList.remove('open');
   q('detailBackdrop').classList.remove('open');
+  _detailCtx = { productId: null, scope: 'all' };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -3922,6 +4006,8 @@ function openModalProduct(editId=null) {
 }
 
 q('btnSaveProduct').addEventListener('click', ()=>{
+  const btn = q('btnSaveProduct');
+  if (btn?.dataset.busy === '1') return;
   const name = q('pName').value.trim();
   if (!name) return toast('請輸入商品名稱','e');
 
@@ -3960,8 +4046,10 @@ q('btnSaveProduct').addEventListener('click', ()=>{
   }
 
   if (qty > 0 && !isNaN(cost)) {
+    if (btn) btn.dataset.busy = '1';
+    const scopeInput = q('pBuyScope')?.value || 'biz';
     const { ids } = Ledger.recordBuy({
-      scopeInput: q('pBuyScope')?.value || 'biz',
+      scopeInput,
       fields: {
         productId:       productData.id,
         date:            q('pBuyDate').value||today(),
@@ -3974,10 +4062,14 @@ q('btnSaveProduct').addEventListener('click', ()=>{
     });
     save();
     Promise.all(ids.map(id => proofCommit('product', id))).then(() => {
+      if (btn) btn.dataset.busy = '0';
       closeModal('mProduct');
       refreshCurrentView();
-      toast(hasProofs ? `商品已新增，憑證已儲存（${ids.length} 筆進貨）` : '商品已新增','s');
-    });
+      const msg = scopeInput === 'biz'
+        ? `商品已新增（商業＋私人各 ${qty} 張）`
+        : `商品已新增（私人 ${qty} 張）`;
+      toast(hasProofs ? msg + '，憑證已存' : msg, 's');
+    }).catch(() => { if (btn) btn.dataset.busy = '0'; });
     return;
   }
 
@@ -4476,6 +4568,7 @@ function closeModal(id) { document.getElementById(id)?.classList.remove('open');
 function refreshCurrentView() {
   renderTab(currentTab());
   updateKor();
+  refreshDetailIfOpen();
 }
 
 let _confirmCb = null;
@@ -4545,6 +4638,7 @@ function wireEvents() {
   // Close detail
   q('detailClose').addEventListener('click', closeDetail);
   q('detailBackdrop').addEventListener('click', closeDetail);
+  q('detailBtnSaveProduct')?.addEventListener('click', saveDetailProduct);
 
   // Modal closes
   document.querySelectorAll('[data-close]').forEach(btn=>{

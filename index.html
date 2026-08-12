@@ -295,10 +295,40 @@
       <button class="btn-primary btn-sm" id="detailBtnSell">💰 記錄銷售</button>
       <button class="btn-secondary btn-sm" id="detailBtnBuy">🛒 記錄進貨</button>
       <button class="btn-secondary btn-sm" id="detailBtnGrade">🏅 送評</button>
-      <button class="btn-ghost btn-sm" id="detailBtnEdit">✏️ 編輯</button>
     </div>
-    <h3 class="section-label">交易記錄</h3>
-    <div id="detailTxList"></div>
+
+    <div class="detail-section">
+      <div class="detail-section-hd">
+        <h3 class="section-label" style="margin:0">商品資料</h3>
+        <button class="btn-primary btn-sm" id="detailBtnSaveProduct">儲存變更</button>
+      </div>
+      <input type="hidden" id="dEditId"/>
+      <div class="frow">
+        <div class="fg flex2"><label>商品名稱 <span class="req">*</span></label><input type="text" id="dName" class="finp" placeholder="例如：梵谷皮卡丘"/></div>
+        <div class="fg"><label>類型</label>
+          <select id="dType" class="finp"><option>單卡</option><option>鑑定卡</option><option>卡盒</option><option>畫作</option><option>周邊</option></select>
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fg"><label>語言</label>
+          <select id="dLang" class="finp"><option value="英文">英文</option><option value="日文">日文</option><option value="繁體中文">繁體中文</option><option value="其他">其他</option></select>
+        </div>
+        <div class="fg"><label>當前市值（EUR，管理用）</label><input type="number" id="dMarket" class="finp" placeholder="0" min="0" step="0.01"/></div>
+      </div>
+      <div class="fg"><label>上層商品（送評卡的原始卡）</label>
+        <select id="dParent" class="finp"><option value="">— 無（獨立商品）—</option></select>
+      </div>
+      <div class="fg"><label>備註</label><input type="text" id="dNotes" class="finp" placeholder="備註…"/></div>
+      <p class="field-hint">市值僅供參考，商業/私人庫存共用，不會寫入銷售紀錄。</p>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-hd">
+        <h3 class="section-label" style="margin:0">交易記錄</h3>
+        <span class="field-hint" style="margin:0">點擊任一筆可編輯</span>
+      </div>
+      <div id="detailTxList"></div>
+    </div>
   </div>
 </div>
 
