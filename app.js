@@ -3074,6 +3074,11 @@ function load() {
         if (importedPrivIds.has(t.id)) {
           t.scope = 'priv';
         }
+        // Fix legacy product-create: 「初始庫存」 was stored as note, not source
+        if (t.type === 'BUY' && (!t.platform || t.platform === '') && (t.note === '初始庫存' || t.note === '期初庫存')) {
+          t.platform = 'initial';
+          t.note = '';
+        }
       });
       ScopeLedger.normalizeScopeOnLoad(txns);
       return {
@@ -4056,7 +4061,7 @@ q('btnSaveProduct').addEventListener('click', ()=>{
         pricePerUnitEUR: cost,
         platform:        q('pBuySource').value||'',
         currency:        q('pBuyCurrency').value,
-        note:            '初始庫存',
+        note:            '',
       },
     });
     save();
@@ -4334,10 +4339,17 @@ function editTransaction(txId) {
     q('buyQty').value    = tx.quantity;
     q('buyCost').value   = tx.pricePerUnitEUR;
     q('buyDate').value   = tx.date;
-    q('buySource').value = tx.platform||'';
+    // Legacy: product-create used to put 「初始庫存」 in note instead of source
+    let platform = tx.platform || '';
+    let note = tx.note || '';
+    if ((!platform || platform === '') && (note === '初始庫存' || note === '期初庫存')) {
+      platform = 'initial';
+      note = '';
+    }
+    q('buySource').value = platform;
     q('buyCurrency').value = tx.currency||'EUR';
     setScopeValue('buyScope', ScopeLedger.uiScopeForTx(tx));
-    q('buyNote').value   = tx.note||'';
+    q('buyNote').value   = note;
     q('buyFxGroup').style.display = tx.currency&&tx.currency!=='EUR'?'flex':'none';
     updateBuyHint();
   } else if (tx.type==='SELL') {
