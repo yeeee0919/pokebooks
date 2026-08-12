@@ -4745,6 +4745,7 @@ function wireEvents() {
   });
 
   // Product modal currency
+  q('pBuySource')?.addEventListener('change', updateProductBuyHint);
   q('pBuyCurrency').addEventListener('change', ()=>{
     q('pFxGroup').style.display=q('pBuyCurrency').value!=='EUR'?'flex':'none';
   });
