@@ -4128,10 +4128,12 @@ function openModalProduct(editId=null) {
   if (initSec) initSec.style.display = isEdit ? 'none' : 'block';
   q('pBuyQty').value    = '';
   q('pBuyCost').value   = '';
+  if (q('pBuyPrivCost')) q('pBuyPrivCost').value = '';
   q('pBuyDate').value   = today();
   q('pBuyCurrency').value = 'EUR';
   q('pFxGroup').style.display = 'none';
   setScopeValue('pBuyScope', defaultScope);
+  updateDualCostUI('product');
   proofStageClear('product');
   renderProofThumbs('product');
   updateProductBuyHint();
@@ -4182,8 +4184,16 @@ q('btnSaveProduct').addEventListener('click', ()=>{
   if (qty > 0 && !isNaN(cost)) {
     if (btn) btn.dataset.busy = '1';
     const scopeInput = q('pBuyScope')?.value || 'biz';
+    const privRaw = q('pBuyPrivCost')?.value;
+    const privCost = privRaw === '' || privRaw == null ? null : parseFloat(privRaw);
+    if (scopeInput === 'biz' && privCost != null && (isNaN(privCost) || privCost < 0)) {
+      if (btn) btn.dataset.busy = '0';
+      DB.products.pop();
+      return toast('私人成本請輸入有效數字','e');
+    }
     const { ids } = Ledger.recordBuy({
       scopeInput,
+      privPricePerUnitEUR: scopeInput === 'biz' ? (privCost == null || isNaN(privCost) ? cost : privCost) : undefined,
       fields: {
         productId:       productData.id,
         date:            q('pBuyDate').value||today(),
@@ -4200,7 +4210,7 @@ q('btnSaveProduct').addEventListener('click', ()=>{
       closeModal('mProduct');
       refreshCurrentView();
       const msg = scopeInput === 'biz'
-        ? `商品已新增（商業＋私人各 ${qty} 張）`
+        ? `商品已新增（商業成本 ${eur(cost)}／私人成本 ${eur(privCost == null || isNaN(privCost) ? cost : privCost)}）`
         : `商品已新增（私人 ${qty} 張）`;
       toast(hasProofs ? msg + '，憑證已存' : msg, 's');
     }).catch(() => { if (btn) btn.dataset.busy = '0'; });
@@ -4227,6 +4237,25 @@ function setScopeValue(targetId, val) {
       btn.classList.toggle('active', btn.dataset.scope === val);
     });
   }
+  if (targetId === 'buyScope') updateDualCostUI('buy');
+  if (targetId === 'pBuyScope') updateDualCostUI('product');
+}
+
+/** Show/hide private cost field and relabel commercial cost by scope. */
+function updateDualCostUI(which) {
+  const isProduct = which === 'product';
+  const scope = (isProduct ? q('pBuyScope') : q('buyScope'))?.value || 'biz';
+  const wrap = q(isProduct ? 'pBuyPrivCostWrap' : 'buyPrivCostWrap');
+  const label = q(isProduct ? 'pBuyCostLabel' : 'buyCostLabel');
+  const hint = q(isProduct ? 'pBuyCostHint' : 'buyCostHint');
+  const isBiz = scope === 'biz';
+  if (wrap) wrap.style.display = isBiz ? '' : 'none';
+  if (label) {
+    label.innerHTML = isBiz
+      ? (isProduct ? '商業成本/張（EUR）' : '商業成本/張（EUR）<span class="req">*</span>')
+      : (isProduct ? '私人成本/張（EUR）' : '成本/張（EUR）<span class="req">*</span>');
+  }
+  if (hint) hint.style.display = isBiz ? '' : 'none';
 }
 
 function openModalBuy(presetProductId=null, editTxId=null, presetScope='biz') {
@@ -4235,6 +4264,7 @@ function openModalBuy(presetProductId=null, editTxId=null, presetScope='biz') {
     DB.products.map(p=>`<option value="${p.id}"${p.id===presetProductId?' selected':''}>${esc(p.name)} (${p.type})</option>`).join('');
   q('buyQty').value    = '';
   q('buyCost').value   = '';
+  if (q('buyPrivCost')) q('buyPrivCost').value = '';
   q('buyDate').value   = today();
   q('buySource').value = 'nl_inperson';
   q('buyCurrency').value='EUR';
@@ -4300,9 +4330,31 @@ q('btnSaveBuy').addEventListener('click', ()=>{
   if (!date) return toast('請選擇日期','e');
 
   const scopeVal = q('buyScope').value || 'biz';
+  const privRaw = q('buyPrivCost')?.value;
+  const privCost = privRaw === '' || privRaw == null ? null : parseFloat(privRaw);
+  if (scopeVal === 'biz' && privCost != null && (isNaN(privCost) || privCost < 0)) {
+    return toast('私人成本請輸入有效數字','e');
+  }
+
+  // When editing a priv-only / priv-side row, buyCost is that side's cost only
+  const editing = editId ? Ledger.findById(editId) : null;
+  const editingScope = editing ? ScopeLedger.normalizeScope(editing, DB.transactions) : scopeVal;
+  let privPrice;
+  if (editingScope === 'priv') {
+    privPrice = undefined;
+  } else if (scopeVal === 'biz') {
+    if (privCost == null || isNaN(privCost)) {
+      // Create: default private cost = commercial. Edit: leave existing private cost unchanged.
+      privPrice = editId ? undefined : cost;
+    } else {
+      privPrice = privCost;
+    }
+  }
+
   const { ids } = Ledger.recordBuy({
     scopeInput: scopeVal,
     editId: editId || null,
+    privPricePerUnitEUR: privPrice,
     fields: {
       productId,
       date,
@@ -4479,6 +4531,15 @@ function editTransaction(txId) {
     q('buySource').value = platform;
     q('buyCurrency').value = tx.currency||'EUR';
     setScopeValue('buyScope', ScopeLedger.uiScopeForTx(tx));
+    const paired = ScopeLedger.findPairedTx(tx, DB.transactions);
+    if (q('buyPrivCost')) {
+      if (ScopeLedger.normalizeScope(tx, DB.transactions) === 'biz' && paired) {
+        q('buyPrivCost').value = paired.pricePerUnitEUR ?? '';
+      } else {
+        q('buyPrivCost').value = '';
+      }
+    }
+    updateDualCostUI('buy');
     q('buyNote').value   = note;
     q('buyFxGroup').style.display = tx.currency&&tx.currency!=='EUR'?'flex':'none';
     updateBuyHint();
@@ -4693,10 +4754,55 @@ function productNameDetail(p) {
   return parts.join(' / ');
 }
 
+/** Sanitize a string for use inside a filename (keep CJK, strip path-illegal chars). */
+function sanitizeFilePart(s, maxLen = 48) {
+  const cleaned = String(s || '')
+    .normalize('NFKC')
+    .replace(/[\/\\?%*:|"<>]/g, '')
+    .replace(/[\s　]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (!cleaned) return '';
+  return cleaned.length > maxLen ? cleaned.slice(0, maxLen) : cleaned;
+}
+
+function platformEvidenceLabel(platform) {
+  if (platform === 'initial') return '期初市價佐證';
+  if (platform === 'prive_storting') return '私人轉入佐證';
+  if (platform === 'cardmarket') return 'Cardmarket佐證';
+  if (platform === 'nl_inperson') return '現場購入佐證';
+  if (platform === 'tw_social') return '社團購入佐證';
+  return '佐證';
+}
+
+/** Human-readable evidence basename from product name / type / condition notes. */
+function evidenceNameStem(product, transferDate, platform) {
+  const parts = [
+    transferDate || today(),
+    sanitizeFilePart(product?.name, 50) || '未命名商品',
+    sanitizeFilePart(product?.type, 16),
+    sanitizeFilePart(product?.language, 12),
+    sanitizeFilePart(product?.notes, 24), // 品相／備註常寫在這裡
+    platformEvidenceLabel(platform),
+  ].filter(Boolean);
+  return parts.join('_');
+}
+
+function productSkuCode(product, productId) {
+  const namePart = sanitizeFilePart(product?.name, 24) || 'ITEM';
+  const idPart = String(productId || '').replace(/-/g, '').slice(0, 6).toUpperCase() || '000000';
+  return `${namePart}-${idPart}`;
+}
+
 function suggestedEvidenceFilename(row, index = 1) {
-  const safeSku = String(row.sku || 'SKU').replace(/[^\w\-]+/g, '_');
+  const stem = row.evidence_stem
+    || evidenceNameStem(
+      { name: row.name_detail, type: '', language: '', notes: '' },
+      row.transfer_date,
+      'initial'
+    );
   const n = String(index).padStart(2, '0');
-  return `${row.transfer_date || today()}_${safeSku}_${n}.png`;
+  return `${stem}_${n}.png`;
 }
 
 function guessProofExt(name, mime) {
@@ -4707,6 +4813,25 @@ function guessProofExt(name, mime) {
   if (mime === 'image/heic') return '.heic';
   if (mime === 'image/gif') return '.gif';
   return '.png';
+}
+
+function makeEvidenceExportName(product, transferDate, platform, index, ext) {
+  const stem = evidenceNameStem(product, transferDate, platform);
+  return `${stem}_${String(index).padStart(2, '0')}${ext}`;
+}
+
+function uniqueEvidenceName(fileName, usedNames) {
+  if (!usedNames.has(fileName)) return fileName;
+  const m = String(fileName).match(/^(.*)(\.[^.]+)$/);
+  const stem = m ? m[1] : fileName;
+  const ext = m ? m[2] : '';
+  let n = 2;
+  let candidate = `${stem}_${n}${ext}`;
+  while (usedNames.has(candidate)) {
+    n += 1;
+    candidate = `${stem}_${n}${ext}`;
+  }
+  return candidate;
 }
 
 async function collectProofsForOpeningTx(txId) {
@@ -4742,17 +4867,21 @@ async function buildOpeningInventoryRows() {
   const buys = getOpeningBuyTransactions();
   const rows = [];
   const evidenceFiles = []; // { path, blob, txId, name }
+  const usedNames = new Set();
   for (const t of buys) {
     const p = DB.products.find(x => x.id === t.productId);
     const qty = Number(t.quantity) || 0;
     const unit = Number(t.pricePerUnitEUR) || 0;
-    const sku = (t.productId || '').slice(0, 8).toUpperCase();
+    const sku = productSkuCode(p, t.productId);
     const transferDate = t.date || DB.settings.korStart || today();
+    const stem = evidenceNameStem(p, transferDate, t.platform || '');
     const proofs = await collectProofsForOpeningTx(t.id);
     const exportNames = [];
     proofs.forEach((proof, i) => {
       const ext = guessProofExt(proof.name, proof.type);
-      const exportName = `${transferDate}_${sku}_${String(i + 1).padStart(2, '0')}${ext}`;
+      let exportName = makeEvidenceExportName(p, transferDate, t.platform || '', i + 1, ext);
+      exportName = uniqueEvidenceName(exportName, usedNames);
+      usedNames.add(exportName);
       const path = `evidence/${exportName}`;
       exportNames.push(exportName);
       evidenceFiles.push({
@@ -4767,6 +4896,7 @@ async function buildOpeningInventoryRows() {
       productId: t.productId,
       txId: t.id,
       name_detail: productNameDetail(p),
+      evidence_stem: stem,
       qty,
       transfer_date: transferDate,
       market_value_eur: unit,
@@ -4903,11 +5033,19 @@ async function ensureEvidenceFilesForDoc(doc, evidenceFiles) {
   if (Array.isArray(evidenceFiles)) return evidenceFiles;
   // Re-collect from IndexedDB when re-downloading a frozen doc
   const rebuilt = [];
+  const usedNames = new Set();
   for (const row of doc.rows || []) {
+    const product = DB.products.find(x => x.id === row.productId)
+      || { name: row.name_detail, type: '', language: '', notes: '' };
+    const tx = DB.transactions.find(t => t.id === row.txId);
+    const platform = tx?.platform || '';
+    const transferDate = row.transfer_date || today();
     const proofs = await collectProofsForOpeningTx(row.txId);
     proofs.forEach((proof, i) => {
       const ext = guessProofExt(proof.name, proof.type);
-      const exportName = `${row.transfer_date || today()}_${row.sku}_${String(i + 1).padStart(2, '0')}${ext}`;
+      let exportName = makeEvidenceExportName(product, transferDate, platform, i + 1, ext);
+      exportName = uniqueEvidenceName(exportName, usedNames);
+      usedNames.add(exportName);
       rebuilt.push({
         path: `evidence/${exportName}`,
         blob: proof.blob,

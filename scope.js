@@ -8,9 +8,11 @@ const ScopeLedger = (() => {
   const PRIV = 'priv';
   const LEGACY_DEFAULT = PRIV;
 
-  /** Fields synced bidirectionally between paired biz/priv transactions */
+  /** Fields synced bidirectionally between paired biz/priv transactions.
+   *  Unit price/cost is intentionally NOT synced — commercial book value and
+   *  private acquisition cost must stay independent for tax isolation. */
   const PAIR_SYNC_FIELDS = [
-    'productId', 'date', 'quantity', 'pricePerUnitEUR',
+    'productId', 'date', 'quantity',
     'platform', 'currency', 'fee', 'feePerUnitEUR', 'note', 'type',
     'targetProductId', 'gradingService', 'gradingScore',
   ];
@@ -81,8 +83,10 @@ const ScopeLedger = (() => {
     return [txId];
   }
 
-  /** Build transaction record(s) from modal scope input */
-  function createFromInput(scopeInput, baseTx, uidFn) {
+  /** Build transaction record(s) from modal scope input.
+   *  opts.privPricePerUnitEUR — optional private-side unit cost when creating a biz pair.
+   *  If omitted, private copies the commercial unit cost (legacy-compatible). */
+  function createFromInput(scopeInput, baseTx, uidFn, opts = {}) {
     const uid = uidFn;
     const scope = scopeInput === PRIV ? PRIV : BIZ;
 
@@ -90,17 +94,21 @@ const ScopeLedger = (() => {
       return [{ ...baseTx, id: uid(), scope: PRIV }];
     }
 
-    // biz → paired biz + priv
+    // biz → paired biz + priv (shared fields, independent unit costs)
     const pairId = uid();
     const sharedNote = (baseTx.note || '').replace(/ \(商業＋私人同時.*?\)/, '').trim();
+    const bizPrice = Number(baseTx.pricePerUnitEUR);
+    const hasPrivPrice = opts.privPricePerUnitEUR != null && opts.privPricePerUnitEUR !== '';
+    const privPrice = hasPrivPrice ? Number(opts.privPricePerUnitEUR) : bizPrice;
     return [
-      { ...baseTx, id: uid(), scope: BIZ, pairId, note: sharedNote },
-      { ...baseTx, id: uid(), scope: PRIV, pairId, note: sharedNote },
+      { ...baseTx, id: uid(), scope: BIZ, pairId, note: sharedNote, pricePerUnitEUR: bizPrice },
+      { ...baseTx, id: uid(), scope: PRIV, pairId, note: sharedNote, pricePerUnitEUR: privPrice },
     ];
   }
 
-  /** Apply edit to tx and its pair (bidirectional sync) */
-  function applyPairedEdit(transactions, txId, updates) {
+  /** Apply edit to tx; pair only receives PAIR_SYNC_FIELDS (not unit cost).
+   *  opts.pairedPricePerUnitEUR — when set, also update the paired tx's unit cost. */
+  function applyPairedEdit(transactions, txId, updates, opts = {}) {
     const tx = transactions.find(t => t.id === txId);
     if (!tx) return [];
 
@@ -109,11 +117,18 @@ const ScopeLedger = (() => {
       if (key in updates) syncUpdates[key] = updates[key];
     }
 
+    // Unit cost applies to the edited row only unless explicitly provided for the pair
+    if ('pricePerUnitEUR' in updates) {
+      tx.pricePerUnitEUR = updates.pricePerUnitEUR;
+    }
     Object.assign(tx, syncUpdates);
 
     const paired = findPairedTx(tx, transactions);
     if (paired) {
       Object.assign(paired, syncUpdates);
+      if (opts.pairedPricePerUnitEUR != null && opts.pairedPricePerUnitEUR !== '') {
+        paired.pricePerUnitEUR = Number(opts.pairedPricePerUnitEUR);
+      }
       return [tx.id, paired.id];
     }
     return [tx.id];

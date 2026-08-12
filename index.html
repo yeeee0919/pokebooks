@@ -369,9 +369,11 @@
         <div class="divider-label">初始進貨（選填）</div>
         <div class="frow">
           <div class="fg"><label>數量</label><input type="number" id="pBuyQty" class="finp" placeholder="0" min="0"/></div>
-          <div class="fg"><label>成本/張（EUR）</label><input type="number" id="pBuyCost" class="finp" placeholder="0.00" min="0" step="0.01"/></div>
+          <div class="fg"><label id="pBuyCostLabel">商業成本/張（EUR）</label><input type="number" id="pBuyCost" class="finp" placeholder="市價 0.00" min="0" step="0.01"/></div>
+          <div class="fg" id="pBuyPrivCostWrap"><label>私人成本/張（EUR）</label><input type="number" id="pBuyPrivCost" class="finp" placeholder="實際購入成本" min="0" step="0.01"/></div>
           <div class="fg"><label>日期</label><input type="date" id="pBuyDate" class="finp"/></div>
         </div>
+        <p class="field-hint" id="pBuyCostHint">選「商業」時：商業成本用報稅／市價；私人成本用你自己購入價。兩邊分開，私人數字不會進商業報表。</p>
         <div class="fg">
           <label>來源 <span class="req">*</span></label>
           <select id="pBuySource" class="finp">
@@ -397,7 +399,7 @@
             <button type="button" class="scope-btn active" data-scope="biz" data-target="pBuyScope">🏢 商業</button>
             <button type="button" class="scope-btn" data-scope="priv" data-target="pBuyScope">👤 私人</button>
           </div>
-          <p class="field-hint">選「商業」會同時記一筆私人帳；憑證圖片會附加在進貨紀錄上。</p>
+          <p class="field-hint">選「商業」會同時記一筆私人帳（成本各自填）；憑證圖片會附加在進貨紀錄上。</p>
         </div>
         <div class="fg">
           <label>📎 憑證圖片（發票、刷卡紀錄、對話截圖…）</label>
@@ -428,9 +430,11 @@
       </div>
       <div class="frow">
         <div class="fg"><label>數量 <span class="req">*</span></label><input type="number" id="buyQty" class="finp" placeholder="1" min="1"/></div>
-        <div class="fg"><label>成本/張（EUR）<span class="req">*</span></label><input type="number" id="buyCost" class="finp" placeholder="0.00" min="0" step="0.01"/></div>
+        <div class="fg"><label id="buyCostLabel">商業成本/張（EUR）<span class="req">*</span></label><input type="number" id="buyCost" class="finp" placeholder="市價 0.00" min="0" step="0.01"/></div>
+        <div class="fg" id="buyPrivCostWrap"><label>私人成本/張（EUR）</label><input type="number" id="buyPrivCost" class="finp" placeholder="實際購入成本" min="0" step="0.01"/></div>
         <div class="fg"><label>日期 <span class="req">*</span></label><input type="date" id="buyDate" class="finp"/></div>
       </div>
+      <p class="field-hint" id="buyCostHint">選「商業」時兩邊成本分開：商業用市價／報稅入帳；私人用你自己購入價。私人數字不會進商業報表與 KOR。</p>
       <div class="frow">
         <div class="fg"><label>來源</label>
           <select id="buySource" class="finp">
@@ -454,7 +458,7 @@
           <button type="button" class="scope-btn active" data-scope="biz" data-target="buyScope">🏢 商業</button>
           <button type="button" class="scope-btn" data-scope="priv" data-target="buyScope">👤 私人</button>
         </div>
-        <p class="field-hint" id="buyScopeHint">選「商業」會同時記一筆私人帳</p>
+        <p class="field-hint" id="buyScopeHint">選「商業」會同時記一筆私人帳，但成本各自獨立</p>
       </div>
       <div class="receipt-hint" id="buySourceHint"></div>
       <div class="fg"><label>備註</label><input type="text" id="buyNote" class="finp" placeholder="賣家、對話截圖描述…"/></div>

@@ -70,12 +70,18 @@ const TransactionLedger = {
       return { count: txList.length, rev, buyCost };
     }
 
-    function recordBuy({ scopeInput, fields, editId }) {
+    function recordBuy({ scopeInput, fields, editId, privPricePerUnitEUR }) {
       const base = { ...fields, type: 'BUY' };
 
       if (editId) {
+        const existing = findById(editId);
+        const existingScope = ScopeLedger.normalizeScope(existing, txns());
         const updates = { ...base };
-        ScopeLedger.applyPairedEdit(txns(), editId, updates);
+        const opts = {};
+        if (existingScope === 'biz' && privPricePerUnitEUR != null && privPricePerUnitEUR !== '') {
+          opts.pairedPricePerUnitEUR = privPricePerUnitEUR;
+        }
+        ScopeLedger.applyPairedEdit(txns(), editId, updates, opts);
         const edited = findById(editId);
         valuation.onTransactionMutated(edited, Object.keys(updates));
         const paired = ScopeLedger.findPairedTx(edited, txns());
@@ -83,7 +89,9 @@ const TransactionLedger = {
         return { txs: [edited, paired].filter(Boolean), ids: [edited?.id, paired?.id].filter(Boolean) };
       }
 
-      const created = ScopeLedger.createFromInput(scopeInput, base, uid);
+      const created = ScopeLedger.createFromInput(scopeInput, base, uid, {
+        privPricePerUnitEUR,
+      });
       txns().push(...created);
       return { txs: created, ids: created.map(t => t.id) };
     }

@@ -8,9 +8,14 @@ Shared language for agents and humans working on this codebase.
 
 **Legacy default** — transactions with no `scope` field are treated as `priv`.
 
-**Scope pair** — when the user records a **commercial BUY or SELL**, the system creates two linked transactions (one `biz`, one `priv`) sharing a `pairId`. Fields stay in sync on edit; deleting the `biz` row also deletes the paired `priv` row; deleting `priv` alone does not touch `biz`.
+**Scope pair** — when the user records a **commercial BUY or SELL**, the system creates two linked transactions (one `biz`, one `priv`) sharing a `pairId`. Shared fields (product, date, quantity, source, etc.) stay in sync on edit; **unit cost / unit price does not sync** across the pair. Deleting the `biz` row also deletes the paired `priv` row; deleting `priv` alone does not touch `biz`.
 
 **Pure private entry** — when the user selects **私人 (priv)**, only one transaction is created with no pair.
+
+**Commercial unit cost** — the per-unit amount booked on the `biz` BUY (e.g. fair market value for opening inbreng). Drives commercial WACC/COGS and tax inventory; never mixed into private valuation.
+
+**Private unit cost** — the per-unit amount booked on the `priv` BUY (e.g. the owner's actual acquisition cost). Drives private WACC only; excluded from KOR and business P&L.
+_Avoid_: treating private acquisition cost as commercial book value
 
 ## Inventory & valuation
 
