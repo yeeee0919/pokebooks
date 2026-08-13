@@ -14,9 +14,9 @@
 
 <div id="app">
 
-  <!-- ═══ SIDEBAR ═══ -->
-  <aside class="sidebar">
-    <div class="sidebar-top">
+  <!-- ═══ TOP NAV ═══ -->
+  <aside class="sidebar topnav">
+    <div class="topnav-bar">
       <div class="brand">
         <span class="brand-icon">🃏</span>
         <div class="brand-text">
@@ -25,34 +25,32 @@
         </div>
       </div>
 
-      <!-- KOR Mini -->
-      <div class="kor-pill" id="korPill">
-        <div class="kor-pill-top">
-          <span class="kor-pill-label">KOR 年度</span>
-          <span class="kor-pill-pct" id="korPillPct">0%</span>
-        </div>
-        <div class="kor-pill-track">
-          <div class="kor-pill-bar" id="korPillBar" style="width:0%"></div>
-        </div>
-        <div class="kor-pill-nums">
-          <span id="korPillAmt">€0</span><span style="color:var(--t3)">/ €20,000</span>
-        </div>
-      </div>
-
       <nav class="nav">
         <a class="nav-link active" data-tab="dashboard"><span class="nav-ico">📊</span><span>儀表板</span></a>
-        <a class="nav-link" data-tab="inventory-biz"><span class="nav-ico">🏢</span><span>商業庫存 (報稅)</span></a>
-        <a class="nav-link" data-tab="inventory-priv"><span class="nav-ico">👤</span><span>私人庫存 (個人)</span></a>
-        <a class="nav-link" data-tab="transactions"><span class="nav-ico">↕️</span><span>交易記錄</span></a>
-        <a class="nav-link" data-tab="expenses"><span class="nav-ico">💸</span><span>費用記錄</span></a>
-        <a class="nav-link" data-tab="reports"><span class="nav-ico">📋</span><span>損益報表</span></a>
-        <a class="nav-link" data-tab="calendar"><span class="nav-ico">📅</span><span>報稅行事曆</span></a>
-        <a class="nav-link" data-tab="documents"><span class="nav-ico">📁</span><span>相關文件</span></a>
+        <a class="nav-link" data-tab="inventory-biz"><span class="nav-ico">🏢</span><span>商業庫存</span></a>
+        <a class="nav-link" data-tab="inventory-priv"><span class="nav-ico">👤</span><span>私人庫存</span></a>
+        <a class="nav-link" data-tab="transactions"><span class="nav-ico">↕️</span><span>交易</span></a>
+        <a class="nav-link" data-tab="expenses"><span class="nav-ico">💸</span><span>費用</span></a>
+        <a class="nav-link" data-tab="reports"><span class="nav-ico">📋</span><span>損益</span></a>
+        <a class="nav-link" data-tab="calendar"><span class="nav-ico">📅</span><span>行事曆</span></a>
+        <a class="nav-link" data-tab="documents"><span class="nav-ico">📁</span><span>文件</span></a>
+        <a class="nav-link" data-tab="settings"><span class="nav-ico">⚙️</span><span>設定</span></a>
       </nav>
-    </div>
 
-    <div class="sidebar-bot">
-      <a class="nav-link" data-tab="settings"><span class="nav-ico">⚙️</span><span>設定 & 備份</span></a>
+      <div class="topnav-right">
+        <div class="kor-pill" id="korPill" title="KOR 年度營業額">
+          <div class="kor-pill-top">
+            <span class="kor-pill-label">KOR</span>
+            <span class="kor-pill-pct" id="korPillPct">0%</span>
+          </div>
+          <div class="kor-pill-track">
+            <div class="kor-pill-bar" id="korPillBar" style="width:0%"></div>
+          </div>
+          <div class="kor-pill-nums">
+            <span id="korPillAmt">€0</span><span class="kor-pill-limit">/ €20k</span>
+          </div>
+        </div>
+      </div>
     </div>
   </aside>
 
