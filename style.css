@@ -1051,7 +1051,12 @@ input, select { font-family: var(--font); }
   .docs-stats { grid-template-columns: 1fr; }
 }
 
-/* Scrollbar */
+.scope-btn:disabled,
+.scope-btn-locked {
+  opacity: .4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--s2); border-radius: 99px; }
 ::-webkit-scrollbar-thumb { background: var(--b2); border-radius: 99px; }

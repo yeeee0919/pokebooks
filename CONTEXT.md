@@ -8,7 +8,10 @@ Shared language for agents and humans working on this codebase.
 
 **Legacy default** — transactions with no `scope` field are treated as `priv`.
 
-**Scope pair** — when the user records a **commercial BUY or SELL**, the system creates two linked transactions (one `biz`, one `priv`) sharing a `pairId`. Shared fields (product, date, quantity, source, etc.) stay in sync on edit; **unit cost / unit price does not sync** across the pair. Deleting the `biz` row also deletes the paired `priv` row; deleting `priv` alone does not touch `biz`.
+**Scope pair** — when the user records a **commercial BUY** (especially opening inbreng / private transfer), the system may create two linked transactions (one `biz`, one `priv`) sharing a `pairId`, so commercial book value and private acquisition cost can differ. Shared fields (product, date, quantity, source) stay in sync on edit; **unit cost does not sync**. Deleting the `biz` row also deletes the paired `priv` row; deleting `priv` alone does not touch `biz`.
+
+**Sales are single-scope** — a SELL is recorded on exactly one account scope. Commercial sales never mirror into private, and private sales never appear on commercial inventory, KOR, or business P&L.
+_Avoid_: pairing SELL across biz/priv
 
 **Pure private entry** — when the user selects **私人 (priv)**, only one transaction is created with no pair.
 

@@ -3717,7 +3717,7 @@ function renderDetailTransactions(productId, scope) {
       }).join('')}</tbody>
     </table>
   </div>
-  <p class="field-hint">若同一張卡出現兩筆相同進貨：選「商業」時會同時建立商業＋私人各一筆；在「私人庫存」應只看到私人那一筆。若私人也出現兩筆，多半是存了兩次，點其中一筆刪除即可。</p>`;
+  <p class="field-hint">進貨選「商業」時可能同時建立商業＋私人各一筆（成本可不同）。銷售則只記在你選的帳戶：私人銷售不會出現在商業庫存／KOR。</p>`;
 
   el.querySelectorAll('.detail-tx-row').forEach(row => {
     row.addEventListener('click', () => editTransaction(row.dataset.id));
@@ -4377,12 +4377,27 @@ q('btnSaveBuy').addEventListener('click', ()=>{
 // ══════════════════════════════════════════════════════════════
 //  MODAL — RECORD SELL
 // ══════════════════════════════════════════════════════════════
+let _sellScopeLock = null; // 'priv' | 'biz' | null — lock when opened from inventory tab
+
 function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
   const editTx = editTxId ? Ledger.findById(editTxId) : null;
   q('sellEditId').value = editTxId||'';
 
+  const tab = currentTab();
   let scopeVal = editTx ? ScopeLedger.uiScopeForTx(editTx) : (presetScope === 'all' ? 'biz' : presetScope);
+  _sellScopeLock = null;
+  if (!editTx) {
+    // Inventory context wins: private page / private detail ⇒ private sale only
+    if (tab === 'inventory-priv' || presetScope === 'priv') {
+      scopeVal = 'priv';
+      _sellScopeLock = 'priv';
+    } else if (tab === 'inventory-biz' || presetScope === 'biz') {
+      scopeVal = 'biz';
+      _sellScopeLock = 'biz';
+    }
+  }
   setScopeValue('sellScope', scopeVal);
+  updateSellScopeUI();
 
   const sel = q('sellProductId');
   const inStock = DB.products.filter(p=>getQty(p.id, scopeVal)>0 || (editTx && p.id===editTx.productId));
@@ -4410,11 +4425,38 @@ function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
   }
   updateProfitPreview();
   if (targetPid) updateSellCostPreview();
+  updateKorCheck();
   openModal('mSell');
 }
 
 function sellFormScope() {
   return q('sellScope')?.value || 'biz';
+}
+
+function updateSellScopeUI() {
+  const scope = sellFormScope();
+  const hint = q('sellScopeHint');
+  document.querySelectorAll('#sellScopeBtns .scope-btn').forEach(btn => {
+    const lockedOut = _sellScopeLock && btn.dataset.scope !== _sellScopeLock;
+    btn.disabled = !!lockedOut;
+    btn.classList.toggle('scope-btn-locked', !!lockedOut);
+    btn.title = lockedOut
+      ? (_sellScopeLock === 'priv'
+        ? '此筆從私人庫存進入，只能記私人銷售'
+        : '此筆從商業庫存進入，只能記商業銷售')
+      : '';
+  });
+  if (hint) {
+    if (scope === 'priv') {
+      hint.textContent = _sellScopeLock === 'priv'
+        ? '從私人庫存進入：只記入私人帳，不計入 KOR，也不會出現在商業庫存／商業交易。'
+        : '私人銷售只記入私人帳，不計入 KOR，不會寫入商業報表。';
+    } else {
+      hint.textContent = _sellScopeLock === 'biz'
+        ? '從商業庫存進入：只記入商業帳並計入 KOR（不再自動寫入私人）。'
+        : '商業銷售只記入商業帳並計入 KOR（不再自動鏡射到私人）。';
+    }
+  }
 }
 
 function updateSellCostPreview() {
@@ -4447,11 +4489,20 @@ function updateProfitPreview() {
 }
 
 function updateKorCheck() {
+  const el = q('sellKorCheck');
+  if (!el) return;
+  const scope = sellFormScope();
   const price  = parseFloat(q('sellPrice').value)||0;
   const qty    = parseInt(q('sellQty').value)||1;
-  const newRev = korRevenue(fiscalYear()) + price*qty;
-  const el = q('sellKorCheck');
+  if (scope === 'priv') {
+    el.className = 'kor-check ok';
+    el.textContent = price
+      ? '👤 私人銷售：不計入 KOR，也不會寫入商業庫存／營業額。'
+      : '👤 目前為私人帳戶：不計入 KOR。';
+    return;
+  }
   if (!price) { el.className='kor-check'; el.textContent=''; return; }
+  const newRev = korRevenue(fiscalYear()) + price*qty;
   if (newRev > KOR_LIMIT) {
     el.className='kor-check danger';
     el.textContent=`🚨 此筆後年度 KOR 達 ${eur(newRev)}，超過上限 €20,000！先別急著賣——跟我說，我們一起處理 BTW。`;
@@ -4460,7 +4511,7 @@ function updateKorCheck() {
     el.textContent=`⚠️ 此筆後年度 KOR 達 ${eur(newRev)}（${pct(newRev/KOR_LIMIT*100)}），接近上限！`;
   } else {
     el.className='kor-check ok';
-    el.textContent=`✅ 此筆後年度 KOR 達 ${eur(newRev)}（${pct(newRev/KOR_LIMIT*100)}），剩餘 ${eur(KOR_LIMIT-newRev)}。`;
+    el.textContent=`✅ 商業銷售：此筆後年度 KOR 達 ${eur(newRev)}（${pct(newRev/KOR_LIMIT*100)}），剩餘 ${eur(KOR_LIMIT-newRev)}。`;
   }
 }
 
@@ -4475,7 +4526,8 @@ q('btnSaveSell').addEventListener('click', async ()=>{
   if (isNaN(price)||price<0) return toast('請輸入售價','e');
   if (!date) return toast('請選擇日期','e');
 
-  const scopeVal = q('sellScope').value || 'biz';
+  let scopeVal = q('sellScope').value || 'biz';
+  if (_sellScopeLock) scopeVal = _sellScopeLock;
   const fee      = parseFloat(q('sellFee').value)||0;
 
   const stock = Ledger.checkSellStock(productId, scopeVal, qty);
@@ -4506,9 +4558,11 @@ q('btnSaveSell').addEventListener('click', async ()=>{
   save();
   proofCommitToIds('sell', ids).then(() => {
     closeModal('mSell');
+    _sellScopeLock = null;
     updateKor();
     refreshCurrentView();
-    toast(editId ? '銷售紀錄已更新' : `銷售 × ${qty} 已記錄`, 's');
+    const where = scopeVal === 'priv' ? '私人帳（不計 KOR）' : '商業帳（計入 KOR）';
+    toast(editId ? `銷售紀錄已更新（${where}）` : `銷售 × ${qty} 已記入${where}`, 's');
   });
 });
 
@@ -5458,12 +5512,20 @@ function wireEvents() {
       const targetId = btn.dataset.target;
       setScopeValue(targetId, scope);
       if (targetId === 'sellScope') {
+        if (_sellScopeLock && scope !== _sellScopeLock) {
+          setScopeValue('sellScope', _sellScopeLock);
+          toast(_sellScopeLock === 'priv'
+            ? '此筆從私人庫存進入，只能記私人銷售'
+            : '此筆從商業庫存進入，只能記商業銷售', 'w');
+        }
+        updateSellScopeUI();
         updateProfitPreview();
         updateKorCheck();
         // Refresh in-stock product list for selected scope
+        const scopeNow = sellFormScope();
         const editId = q('sellEditId')?.value;
         const editTx = editId ? Ledger.findById(editId) : null;
-        const inStock = DB.products.filter(p => getQty(p.id, scope) > 0 || (editTx && p.id === editTx.productId));
+        const inStock = DB.products.filter(p => getQty(p.id, scopeNow) > 0 || (editTx && p.id === editTx.productId));
         const sel = q('sellProductId');
         const cur = sel?.value;
         if (sel) {
@@ -5471,6 +5533,9 @@ function wireEvents() {
             inStock.map(p => `<option value="${p.id}"${p.id === cur ? ' selected' : ''}>${esc(p.name)} (${p.type})</option>`).join('');
         }
         updateSellCostPreview();
+      }
+      if (targetId === 'buyScope' || targetId === 'pBuyScope') {
+        // dual-cost UI already handled in setScopeValue
       }
     });
   });
@@ -5509,9 +5574,17 @@ function wireEvents() {
     btn.addEventListener('click', () => openModalProduct());
   });
 
-  // Transactions
-  q('btnAddSell').addEventListener('click', ()=>openModalSell());
-  q('btnAddBuy').addEventListener('click', ()=>openModalBuy());
+  // Transactions — open sell/buy with scope from current tab when possible
+  q('btnAddSell').addEventListener('click', () => {
+    const tab = currentTab();
+    const preset = tab === 'inventory-priv' ? 'priv' : (tab === 'inventory-biz' ? 'biz' : 'biz');
+    openModalSell(null, null, preset);
+  });
+  q('btnAddBuy').addEventListener('click', () => {
+    const tab = currentTab();
+    const preset = tab === 'inventory-priv' ? 'priv' : 'biz';
+    openModalBuy(null, null, preset);
+  });
   ['txScopeFilter','txYearFilter','txTypeFilter'].forEach(id=>q(id)?.addEventListener('change', renderTransactions));
   document.querySelectorAll('#txScopeTabs .pill-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -5575,8 +5648,7 @@ function wireEvents() {
     q('pFxGroup').style.display=q('pBuyCurrency').value!=='EUR'?'flex':'none';
   });
 
-  // Grade modal link buttons
-  q('btnAddSell').addEventListener('click', ()=>openModalSell());
+  // Grade modal / detail tab links (sell button wired once above)
   const detailTabBtns = document.querySelectorAll('[data-tab]');
   detailTabBtns.forEach(btn=>{
     btn.addEventListener('click', ()=>{

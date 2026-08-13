@@ -112,37 +112,14 @@ const TransactionLedger = {
         return { txs: [edited, paired].filter(Boolean), ids: [edited?.id, paired?.id].filter(Boolean) };
       }
 
-      if (scopeInput === 'biz') {
-        const pairId = uid();
-        const halfFee = fee / 2;
-        const created = [
-          {
-            ...base,
-            id: uid(),
-            scope: 'biz',
-            pairId,
-            fee: halfFee,
-            cogsPerUnit: valuation.snapshotCogsForSell(base.productId, base.date, 'biz'),
-          },
-          {
-            ...base,
-            id: uid(),
-            scope: 'priv',
-            pairId,
-            fee: halfFee,
-            cogsPerUnit: valuation.snapshotCogsForSell(base.productId, base.date, 'priv'),
-          },
-        ];
-        txns().push(...created);
-        return { txs: created, ids: created.map(t => t.id) };
-      }
-
+      // Sales stay on one ledger only — never mirror into the other scope.
+      const scope = scopeInput === 'priv' ? 'priv' : 'biz';
       const tx = {
         ...base,
         id: uid(),
-        scope: 'priv',
+        scope,
         fee,
-        cogsPerUnit: valuation.snapshotCogsForSell(base.productId, base.date, 'priv'),
+        cogsPerUnit: valuation.snapshotCogsForSell(base.productId, base.date, scope),
       };
       txns().push(tx);
       return { txs: [tx], ids: [tx.id] };
