@@ -4921,6 +4921,72 @@ function findOpeningInventoryDoc() {
   return ensureDocumentsArray().find(d => d.type === DOC_TYPE_OPENING) || null;
 }
 
+/** Old export names looked like 2026-08-12_A38DF950_01.png (UUID prefix). */
+function looksLikeLegacyEvidenceName(name) {
+  return /_\d{4}-\d{2}-\d{2}_[A-F0-9]{6,8}_\d{2}\./i.test(String(name || ''))
+    || /_\b[A-F0-9]{8}_\d{2}\./i.test(String(name || ''))
+    || /^20\d{2}-\d{2}-\d{2}_[A-F0-9]{6,8}_\d{2}\./i.test(String(name || ''));
+}
+
+/**
+ * Refresh display fields (sku / name / evidence filenames) from live inventory
+ * without changing booked amounts unless the row is missing.
+ * Fixes: page refresh alone used to keep the old frozen UUID filenames.
+ */
+async function syncOpeningDocEvidenceNames(doc) {
+  if (!doc) return { doc, changed: false };
+  const { rows: liveRows } = await buildOpeningInventoryRows();
+  if (!liveRows.length) return { doc, changed: false };
+
+  const liveByTx = new Map(liveRows.map(r => [r.txId, r]));
+  let changed = false;
+  const nextRows = (doc.rows || []).map(old => {
+    const live = liveByTx.get(old.txId);
+    if (!live) return old;
+    const patch = {
+      sku: live.sku,
+      name_detail: live.name_detail,
+      evidence_stem: live.evidence_stem,
+      evidence_filename: live.evidence_filename,
+      evidence_count: live.evidence_count,
+      evidence_source: live.evidence_source,
+    };
+    if (
+      old.sku !== patch.sku
+      || old.name_detail !== patch.name_detail
+      || old.evidence_filename !== patch.evidence_filename
+      || old.evidence_count !== patch.evidence_count
+    ) {
+      changed = true;
+      return { ...old, ...patch };
+    }
+    return old;
+  });
+
+  // Append any new opening buys not yet in the frozen doc (names only sync;
+  // amounts come from live so user should re-archive for a full refresh)
+  for (const live of liveRows) {
+    if (!(doc.rows || []).some(r => r.txId === live.txId)) {
+      nextRows.push(live);
+      changed = true;
+    }
+  }
+
+  if (!changed) return { doc, changed: false };
+
+  doc.rows = nextRows;
+  doc.totals = {
+    ...(doc.totals || {}),
+    lineCount: nextRows.length,
+    qty: nextRows.reduce((s, r) => s + (r.qty || 0), 0),
+    marketValueEur: Math.round(nextRows.reduce((s, r) => s + (r.line_total_eur || 0), 0) * 100) / 100,
+    evidenceCount: nextRows.reduce((s, r) => s + (r.evidence_count || 0), 0),
+  };
+  doc.updatedAt = new Date().toISOString();
+  save();
+  return { doc, changed: true };
+}
+
 async function archiveOpeningInventoryDocument({ force = false, silent = false, download = !silent } = {}) {
   const existing = findOpeningInventoryDoc();
   if (existing && !force) return existing;
@@ -5167,6 +5233,14 @@ async function renderDocuments() {
   if (!doc && liveCount > 0) {
     doc = await archiveOpeningInventoryDocument({ silent: true, download: true });
     if (doc) toast(`已自動封存並下載 ZIP（${doc.totals.lineCount} 項，佐證 ${doc.totals.evidenceCount || 0} 張）`, 's');
+  } else if (doc && liveCount > 0) {
+    // Refresh page alone used to keep old UUID filenames — sync names from live products
+    const hadLegacy = (doc.rows || []).some(r => looksLikeLegacyEvidenceName(r.evidence_filename));
+    const synced = await syncOpeningDocEvidenceNames(doc);
+    doc = synced.doc;
+    if (synced.changed && hadLegacy) {
+      toast('已把佐證檔名更新成品名格式。請再按「下載 ZIP」取得新檔名。', 's');
+    }
   }
 
   const liveHint = liveCount
