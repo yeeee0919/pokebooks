@@ -38,6 +38,25 @@ _Avoid_: treating private acquisition cost as commercial book value
 
 **Transaction Ledger** (`ledger.js`) — CRUD seam for transactions; returns enriched view models for UI render adapters.
 
-## KOR
+## KOR & BTW
+
+**Company start** — the eenmanszaak founding date (Yi Trading: 2026-08-12). Opening inbreng and the pre-KOR BTW window start here.
+_Avoid_: treating the founding date as KOR start
+
+**KOR start** — the date the kleineondernemersregeling begins (Yi Trading: 2026-10-01). From this date commercial sales are KOR-exempt omzet and input VAT is generally not reclaimable.
+_Avoid_: using KOR start as the opening-inventory transfer date
 
 **KOR revenue** — sum of commercial (`biz`) SELL revenue in the fiscal year. Private sales do not count toward the €20,000 KOR limit.
+
+**Pre-KOR BTW period** — from company start up to (but not including) KOR start. Commercial sales in this window must be filed on the omzetbelasting return; reclaimable input VAT is recorded on business expenses.
+_Avoid_: assuming no quarterly BTW filing in the founding year
+
+## Expenses
+
+**Business expense** — a commercial Kosten entry (`isPrivate === false`). Hits business P&L and IB. Private expenses do not.
+
+**Expense net amount** — the IB / P&L amount on a business expense. When voorbelasting is recorded, this is excl. VAT.
+_Avoid_: booking the iDEAL/gross paid amount as IB kosten when VAT is reclaimed
+
+**Voorbelasting** — input VAT on a business purchase in the pre-KOR BTW period. Reclaimable on the BTW return; excluded from IB kosten.
+_Avoid_: booking reclaimable VAT as an income-tax expense

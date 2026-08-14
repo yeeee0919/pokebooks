@@ -207,7 +207,7 @@
       <div class="view" id="view-expenses">
         <div class="toolbar toolbar-card">
           <div class="tl">
-            <select class="sel" id="expCatFilter"><option value="">全部類別</option><option value="packaging">包材/運費</option><option value="platform_fee">平台費</option><option value="grading_fee">評級費</option><option value="mileage">里程費</option><option value="travel">出差費</option><option value="accountant">會計師費</option><option value="other">其他</option></select>
+            <select class="sel" id="expCatFilter"><option value="">全部類別</option><option value="packaging">包材/運費</option><option value="platform_fee">平台費</option><option value="grading_fee">評級費</option><option value="mileage">里程費</option><option value="travel">出差費</option><option value="accountant">會計師費</option><option value="equipment">設備</option><option value="other">其他</option></select>
           </div>
           <div class="tr"><button class="btn-primary" id="btnAddExpense">＋ 新增費用</button></div>
         </div>
@@ -241,6 +241,7 @@
             <p class="panel-title">🏢 公司資料</p>
             <div class="fg"><label>公司名稱</label><input type="text" id="setCo" class="finp" placeholder="Yi Trading"/></div>
             <div class="fg"><label>KVK 號碼</label><input type="text" id="setKvk" class="finp" placeholder="42131151"/></div>
+            <div class="fg"><label>開業日期</label><input type="date" id="setCompanyStart" class="finp"/></div>
             <div class="fg"><label>KOR 開始日期</label><input type="date" id="setKorStart" class="finp"/></div>
             <div class="fg"><label>目前稅年</label><select id="setYear" class="finp"><option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option></select></div>
             <button class="btn-primary" id="btnSaveSettings">儲存</button>
@@ -575,7 +576,8 @@
           <select id="expCat" class="finp">
             <option value="packaging">📦 包材/運費</option><option value="platform_fee">🖥️ 平台費</option>
             <option value="grading_fee">🏅 評級費</option><option value="mileage">🚗 里程費 €0.25/km</option>
-            <option value="travel">✈️ 出差費</option><option value="accountant">📊 會計師費</option><option value="other">其他</option>
+            <option value="travel">✈️ 出差費</option><option value="accountant">📊 會計師費</option>
+            <option value="equipment">📷 設備</option><option value="other">其他</option>
           </select>
         </div>
       </div>
@@ -584,8 +586,28 @@
         <div class="fg"><label>計算結果（€0.25/km）</label><div class="finp-ro" id="expKmCalc">€ —</div></div>
       </div>
       <div class="frow">
-        <div class="fg"><label>金額（EUR）<span class="req">*</span></label><input type="number" id="expAmt" class="finp" placeholder="0.00" min="0" step="0.01"/></div>
+        <div class="fg"><label>實付含稅（EUR）<span class="req">*</span></label><input type="number" id="expAmt" class="finp" placeholder="0.00" min="0" step="0.01"/></div>
+        <div class="fg"><label>BTW（EUR）</label><input type="number" id="expBtw" class="finp" placeholder="0.00" min="0" step="0.01"/></div>
+        <div class="fg"><label>未稅（所得稅）</label><div class="finp-ro" id="expNetRo">€ —</div></div>
+      </div>
+      <p class="field-hint" id="expBtwHint">KOR 開始前請填發票 BTW；所得稅只扣未稅。</p>
+      <div class="frow">
         <div class="fg flex2"><label>說明 <span class="req">*</span></label><input type="text" id="expDesc" class="finp" placeholder="例如：PostNL pakket"/></div>
+      </div>
+      <div class="frow">
+        <div class="fg"><label>廠商</label><input type="text" id="expVendor" class="finp" placeholder="例如：Codima"/></div>
+        <div class="fg"><label>訂單／發票號</label><input type="text" id="expInvoice" class="finp" placeholder="例如：000002932"/></div>
+      </div>
+      <div class="fg">
+        <label>📎 發票圖片</label>
+        <div class="proof-upload-zone" id="expenseProofZone">
+          <input type="file" id="expenseProofInput" accept="image/*" multiple/>
+          <label for="expenseProofInput" class="proof-upload-label">
+            <span class="upload-ico">🖼️</span>
+            <span>點擊上傳發票，或拖曳到此處</span>
+          </label>
+          <div class="proof-thumbs" id="expenseProofThumbs"></div>
+        </div>
       </div>
       <div class="fg"><label>用途</label>
         <div class="radio-g">

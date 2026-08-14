@@ -72,7 +72,7 @@ async function proofDeleteAll(txId) {
 }
 
 // In-memory staging area for newly-picked files before tx is saved
-const _proofStage = { buy: [], sell: [], product: [] }; // { file, objectURL }[]
+const _proofStage = { buy: [], sell: [], product: [], expense: [] }; // { file, objectURL }[]
 
 function proofStageClear(modal) {
   (_proofStage[modal] || []).forEach(s => URL.revokeObjectURL(s.objectURL));
@@ -3051,10 +3051,98 @@ const DEFAULT = {
   "settings": {
     "company": "Yi Trading",
     "kvk": "42131151",
-    "korStart": "2026-08-12",
+    "companyStart": "2026-08-12",
+    "korStart": "2026-10-01",
     "fiscalYear": 2026
   }
 };
+
+const DOC_TYPE_EXPENSE_RECEIPT = 'expense_receipt';
+
+const SEEDED_EXPENSES = [
+  {
+    id: 'exp-codima-000002932',
+    date: '2026-08-14',
+    category: 'equipment',
+    amountEur: 77.56,
+    btwEur: 16.29,
+    amountInclEur: 93.85,
+    vatRate: 0.21,
+    desc: 'TP-Link Tapo C225 QHD 監視器 ×2（含運費 €3.95）',
+    vendor: 'Codima',
+    vendorEmail: 'info@codima.be',
+    invoiceNo: '000002932',
+    paymentMethod: 'iDEAL',
+    isPrivate: false,
+    receiptPath: 'documents/receipts/2026-08-14_Codima_000002932_Tapo-C225.png',
+    note: 'KOR 開始前採購。進項 BTW €16.29 列入 2026 Q3 omzetbelasting（voorbelasting）。所得稅費用為未稅 €77.56。',
+  },
+];
+
+const SEEDED_DOCUMENTS = [
+  {
+    id: 'doc-codima-000002932',
+    type: DOC_TYPE_EXPENSE_RECEIPT,
+    title: 'Codima 訂單 000002932 — Tapo C225 ×2',
+    expenseId: 'exp-codima-000002932',
+    date: '2026-08-14',
+    path: 'documents/receipts/2026-08-14_Codima_000002932_Tapo-C225.png',
+    amountExclEur: 77.56,
+    btwEur: 16.29,
+    amountInclEur: 93.85,
+  },
+];
+
+function migrateCompanyAndKorStart(settings) {
+  let changed = false;
+  if (!settings.korCompanySplitDone) {
+    if (settings.korStart === '2026-08-12') {
+      settings.companyStart = settings.companyStart || '2026-08-12';
+      settings.korStart = '2026-10-01';
+    }
+    settings.korCompanySplitDone = true;
+    changed = true;
+  }
+  if (!String(settings.companyStart || '').trim()) {
+    settings.companyStart = DEFAULT.settings.companyStart;
+    changed = true;
+  }
+  if (!String(settings.korStart || '').trim()) {
+    settings.korStart = DEFAULT.settings.korStart;
+    changed = true;
+  }
+  return changed;
+}
+
+function ensureSeededLedgerRows(db) {
+  if (!Array.isArray(db.expenses)) db.expenses = [];
+  if (!Array.isArray(db.documents)) db.documents = [];
+  db.settings = db.settings || {};
+  const done = new Set(db.settings.seededLedgerIds || []);
+  let changed = false;
+  for (const row of SEEDED_EXPENSES) {
+    if (done.has(row.id)) continue;
+    if (!db.expenses.some(e => e.id === row.id)) {
+      db.expenses.push({ ...row });
+      changed = true;
+    }
+    done.add(row.id);
+  }
+  for (const row of SEEDED_DOCUMENTS) {
+    if (done.has(row.id)) continue;
+    if (!db.documents.some(d => d.id === row.id)) {
+      db.documents.push({ ...row });
+      changed = true;
+    }
+    done.add(row.id);
+  }
+  const next = [...done];
+  if (JSON.stringify(next) !== JSON.stringify(db.settings.seededLedgerIds || [])) {
+    db.settings.seededLedgerIds = next;
+    changed = true;
+  }
+  return changed;
+}
 
 let DB = load();
 
@@ -3095,8 +3183,8 @@ function load() {
       let seeded = false;
       if (!String(settings.company || '').trim()) { settings.company = DEFAULT.settings.company; seeded = true; }
       if (!String(settings.kvk || '').trim()) { settings.kvk = DEFAULT.settings.kvk; seeded = true; }
-      if (!String(settings.korStart || '').trim()) { settings.korStart = DEFAULT.settings.korStart; seeded = true; }
       if (!settings.fiscalYear) { settings.fiscalYear = DEFAULT.settings.fiscalYear; seeded = true; }
+      if (migrateCompanyAndKorStart(settings)) seeded = true;
       const db = {
         ...DEFAULT,
         ...parsed,
@@ -3105,6 +3193,7 @@ function load() {
         expenses: parsed.expenses || [],
         documents: Array.isArray(parsed.documents) ? parsed.documents : [],
       };
+      if (ensureSeededLedgerRows(db)) seeded = true;
       if (seeded) {
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); } catch (e) {}
       }
@@ -3113,6 +3202,8 @@ function load() {
   } catch(e) {}
   const fresh = JSON.parse(JSON.stringify(DEFAULT));
   ScopeLedger.normalizeScopeOnLoad(fresh.transactions);
+  migrateCompanyAndKorStart(fresh.settings);
+  ensureSeededLedgerRows(fresh);
   return fresh;
 }
 
@@ -3136,6 +3227,29 @@ function inYear(dateStr, yr) { return dateStr && dateStr.startsWith(String(yr));
 function daysUntil(dateStr) { return Math.ceil((new Date(dateStr)-new Date())/86400000); }
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function roundEur(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+function companyStartDate() { return String(DB.settings.companyStart || DEFAULT.settings.companyStart || '2026-08-12'); }
+function korStartDate() { return String(DB.settings.korStart || DEFAULT.settings.korStart || '2026-10-01'); }
+function isPreKorDate(dateStr) {
+  const d = String(dateStr || '');
+  const kor = korStartDate();
+  return !!(d && kor && d < kor);
+}
+function inPreKorWindow(dateStr) {
+  const d = String(dateStr || '');
+  const start = companyStartDate();
+  return !!(d && start && d >= start && isPreKorDate(d));
+}
+function expenseNetEur(e) { return Number(e?.amountEur) || 0; }
+function expenseBtwEur(e) { return Number(e?.btwEur) || 0; }
+function expensePaidEur(e) {
+  const incl = Number(e?.amountInclEur);
+  if (!Number.isNaN(incl) && incl > 0) return incl;
+  return roundEur(expenseNetEur(e) + expenseBtwEur(e));
+}
+function isVoorbelasting(e) {
+  return !!(e && !e.isPrivate && isPreKorDate(e.date) && expenseBtwEur(e) > 0);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -3253,7 +3367,7 @@ function renderDashboard() {
   const yFees  = ySells.reduce((s,t)=>s+(t.fee||0), 0);
   const yGP    = yRev - yCogs - yFees;
   const yGPM   = yRev>0 ? yGP/yRev*100 : 0;
-  const yExp   = DB.expenses.filter(e=>inYear(e.date,yr)&&!e.isPrivate).reduce((s,e)=>s+(e.amountEur||0),0);
+  const yExp   = DB.expenses.filter(e=>inYear(e.date,yr)&&!e.isPrivate).reduce((s,e)=>s+expenseNetEur(e),0);
 
   q('dTotalQty').textContent   = totalQty+' 張';
   q('dTotalCost').textContent  = '帳面成本 '+eur(totalCost);
@@ -3273,7 +3387,7 @@ function renderDashboard() {
       const amt  = t.quantity * (t.pricePerUnitEUR||0);
       return { date:t.date, type:t.type, name, amt:sign*amt };
     }),
-    ...DB.expenses.filter(e=>!e.isPrivate).map(e=>({ date:e.date, type:'EXPENSE', name:e.desc, amt:-e.amountEur })),
+    ...DB.expenses.filter(e=>!e.isPrivate).map(e=>({ date:e.date, type:'EXPENSE', name:e.desc, amt:-expenseNetEur(e) })),
   ].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8);
 
   q('dashRecent').innerHTML = recent.length ? recent.map(r=>`
@@ -3866,16 +3980,24 @@ function renderTxTableForScope(scopeKey, rows) {
 // ══════════════════════════════════════════════════════════════
 const CAT_LABELS = {
   packaging:'📦 包材/運費', platform_fee:'🖥️ 平台費', grading_fee:'🏅 評級費',
-  mileage:'🚗 里程費', travel:'✈️ 出差費', accountant:'📊 會計師費', other:'其他',
+  mileage:'🚗 里程費', travel:'✈️ 出差費', accountant:'📊 會計師費',
+  equipment:'📷 設備', other:'其他',
 };
+
+function expenseReceiptHref(e) {
+  return e?.receiptPath || (SEEDED_DOCUMENTS.find(d => d.expenseId === e?.id)?.path) || '';
+}
 
 function renderExpenses() {
   const catF = q('expCatFilter')?.value||'';
   let exps = [...DB.expenses].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   if (catF) exps = exps.filter(e=>e.category===catF);
 
-  const bizTotal = exps.filter(e=>!e.isPrivate).reduce((s,e)=>s+(e.amountEur||0),0);
-  q('expSummary').innerHTML = `<strong>${exps.length}</strong> 筆費用 · 業務費用合計 <strong>${eur(bizTotal)}</strong>`;
+  const biz = exps.filter(e=>!e.isPrivate);
+  const bizNet = biz.reduce((s,e)=>s+expenseNetEur(e),0);
+  const bizBtw = biz.filter(isVoorbelasting).reduce((s,e)=>s+expenseBtwEur(e),0);
+  const bizPaid = biz.reduce((s,e)=>s+expensePaidEur(e),0);
+  q('expSummary').innerHTML = `<strong>${exps.length}</strong> 筆費用 · 業務未稅 <strong>${eur(bizNet)}</strong> · 進項 BTW <strong>${eur(bizBtw)}</strong> · 實付 <strong>${eur(bizPaid)}</strong>`;
 
   if (!exps.length) {
     q('expList').innerHTML = `<div class="empty"><div class="empty-ico">💸</div><div class="empty-ttl">尚無費用記錄</div></div>`;
@@ -3883,20 +4005,30 @@ function renderExpenses() {
   }
 
   q('expList').innerHTML = `<div class="tx-wrap" style="border:1px solid var(--b1);border-radius:var(--r3)"><table class="tx-table">
-    <thead><tr><th>日期</th><th>類別</th><th>說明</th><th>金額</th><th>用途</th><th>刪除</th></tr></thead>
-    <tbody>${exps.map(e=>`<tr>
+    <thead><tr><th>日期</th><th>類別</th><th>說明</th><th class="col-amt">未稅</th><th class="col-amt">BTW</th><th class="col-amt">實付</th><th>用途</th><th>憑證</th><th>刪除</th></tr></thead>
+    <tbody>${exps.map(e=>{
+      const href = expenseReceiptHref(e);
+      const desc = e.vendor ? `${e.desc}${e.invoiceNo ? ` · ${e.invoiceNo}` : ''}` : e.desc;
+      return `<tr>
       <td class="mono">${e.date}</td>
       <td>${esc(CAT_LABELS[e.category]||e.category)}</td>
-      <td>${esc(e.desc)}</td>
-      <td class="amount ${e.isPrivate?'buy':''}">${eur(e.amountEur)}</td>
+      <td>${esc(desc)}${e.vendor ? `<div class="exp-vendor">${esc(e.vendor)}</div>` : ''}</td>
+      <td class="amount col-amt ${e.isPrivate?'buy':''}">${eur(expenseNetEur(e))}</td>
+      <td class="amount col-amt">${expenseBtwEur(e) ? eur(expenseBtwEur(e)) : '—'}</td>
+      <td class="amount col-amt">${eur(expensePaidEur(e))}</td>
       <td style="font-size:.7rem">${e.isPrivate?'❌ 私人':'✅ 業務'}</td>
+      <td>${href ? `<a class="link-btn" href="${esc(href)}" target="_blank" rel="noopener">發票</a>` : '—'}</td>
       <td><button class="link-btn del-exp" data-id="${e.id}">刪除</button></td>
-    </tr>`).join('')}</tbody>
+    </tr>`;
+    }).join('')}</tbody>
   </table></div>`;
 
   q('expList').querySelectorAll('.del-exp').forEach(btn=>{
     btn.addEventListener('click', ()=>confirm2('確認刪除這筆費用？', ()=>{
-      DB.expenses = DB.expenses.filter(e=>e.id!==btn.dataset.id);
+      const id = btn.dataset.id;
+      DB.expenses = DB.expenses.filter(e=>e.id!==id);
+      DB.documents = (DB.documents || []).filter(d => d.expenseId !== id);
+      proofDeleteAll(id);
       save(); renderExpenses(); toast('費用已刪除','w');
     }));
   });
@@ -3917,8 +4049,8 @@ function renderReports() {
   const grossP = rev - cogs - fees;
 
   const expBycat = {};
-  yExp.forEach(e=>{ expBycat[e.category]=(expBycat[e.category]||0)+(e.amountEur||0); });
-  const totalExp = yExp.reduce((s,e)=>s+(e.amountEur||0),0);
+  yExp.forEach(e=>{ expBycat[e.category]=(expBycat[e.category]||0)+expenseNetEur(e); });
+  const totalExp = yExp.reduce((s,e)=>s+expenseNetEur(e),0);
   const opProfit = grossP - totalExp;
 
   const ZFA=1200, SFA=2123, MKB=0.127;
@@ -3931,6 +4063,11 @@ function renderReports() {
   const invCost     = DB.products.reduce((s,p)=>s+getInventoryCost(p.id,'biz'),0);
   const invQty      = DB.products.reduce((s,p)=>s+getQty(p.id,'biz'),0);
   const inStockCount= DB.products.filter(p=>getQty(p.id,'biz')>0).length;
+
+  const preKorSells = DB.transactions.filter(t => t.type==='SELL' && txScope(t)==='biz' && inPreKorWindow(t.date));
+  const preKorRev = preKorSells.reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
+  const voorbelasting = DB.expenses.filter(e => inYear(e.date, yr) && isVoorbelasting(e)).reduce((s,e)=>s+expenseBtwEur(e),0);
+  const preKorLabel = `${companyStartDate()} ～ ${korStartDate()} 前一日`;
 
   q('rptContent').innerHTML = `
   <div class="panel rpt-section">
@@ -3961,6 +4098,14 @@ function renderReports() {
     <div class="rpt-title">📦 商業期末庫存（Eindbalans 片段）</div>
     <div class="pl-row"><span>商業庫存資產（Voorraad，加權平均成本法）</span><span class="pl-val">${eur(invCost)}</span></div>
     <div class="pl-row"><span>商業在庫：${inStockCount} 種 / ${invQty} 張</span></div>
+  </div>
+
+  <div class="panel rpt-section">
+    <div class="rpt-title">🧾 KOR 前 BTW 底稿（Omzetbelasting）· ${yr}</div>
+    <div class="pl-row"><span>應稅期間</span><span class="pl-val" style="font-size:.85rem">${esc(preKorLabel)}</span></div>
+    <div class="pl-row"><span>期間內商業銷售（帳上 omzet）</span><span class="pl-val">${eur(preKorRev)} · ${preKorSells.length} 筆</span></div>
+    <div class="pl-row"><span>進項 BTW（voorbelasting）</span><span class="pl-val pos">${eur(voorbelasting)}</span></div>
+    <p style="font-size:.7rem;color:var(--t3);margin-top:.65rem">10/1 起才適用 KOR。這段期間的商業銷售要報 omzetbelasting；進項 BTW 可扣。損益表費用已用未稅金額。銷售若售價含稅，申報時用 21/121 拆稅；若未稅則 ×21%。</p>
   </div>`;
 }
 
@@ -4013,6 +4158,17 @@ function getTaxEvents(yr) {
       desc: `${yr} 年 Inkomstenbelasting 通常截止日。KOR 只免 BTW，所得稅仍要報。來不及務必在今天前於 Mijn Belastingdienst 申請 uitstel。`,
     },
   ];
+  const kor = korStartDate();
+  const founded = companyStartDate();
+  if (String(kor).startsWith(String(yr)) && founded && founded < kor) {
+    events.push({
+      date: `${yr}-10-31`,
+      title: 'Q3 BTW 申報截止（KOR 前）',
+      short: '10/1 前銷售與進項 BTW 要報',
+      action: '用費用頁的進項 BTW + 期間內商業銷售填 omzetbelasting',
+      desc: `${co} 於 ${kor} 才開始 KOR。${founded}–${kor} 前一日的商業銷售要報 omzetbelasting，進項 BTW（voorbelasting）可扣。Q3 截止通常為 10/31。`,
+    });
+  }
   return events.sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -4073,8 +4229,12 @@ function renderCalendar() {
   q('calContent').innerHTML = `
     <div class="cal-intro">
       <strong>${esc(DB.settings.company || 'Yi Trading')}</strong> · ${yr} 稅年報稅時程<br/>
-      你是 eenmanszaak + KOR：<strong>不用每季報 BTW</strong>，但<strong>每年一定要報所得稅（Inkomstenbelasting）</strong>。
-      ${yr === 2026 ? '你 2026-08-12 成立，第一次正式報稅是 <strong>2027 年 3–5 月報 2026 年所得</strong>。' : ''}
+      你是 eenmanszaak：<strong>${esc(companyStartDate())} 開業</strong>，<strong>${esc(korStartDate())} 起才適用 KOR</strong>。
+      ${isPreKorDate(today())
+        ? '目前仍在 KOR 前：<strong>這段期間的商業銷售要報 BTW</strong>，進項 BTW 可扣。'
+        : 'KOR 期間通常<strong>不必每季報 BTW</strong>。'}
+      <strong>每年一定要報所得稅（Inkomstenbelasting）</strong>。
+      ${yr === 2026 ? '第一次正式報所得稅是 <strong>2027 年 3–5 月報 2026 年所得</strong>。' : ''}
       截止日以 Belastingdienst 當年信件／官網為準；接近時我會在儀表板提醒你。
     </div>
     ${next ? `<div class="tax-next ${daysUntil(next.date) < 30 ? 'urgent' : ''}">
@@ -4094,6 +4254,7 @@ function renderCalendar() {
 function renderSettings() {
   q('setCo').value       = DB.settings.company||'';
   q('setKvk').value      = DB.settings.kvk||'';
+  if (q('setCompanyStart')) q('setCompanyStart').value = DB.settings.companyStart||'';
   q('setKorStart').value = DB.settings.korStart||'';
   q('setYear').value     = DB.settings.fiscalYear||2026;
   q('bkpNote').textContent = DB.settings.lastBackup
@@ -4765,19 +4926,53 @@ q('btnSaveGrade').addEventListener('click', ()=>{
 q('btnSaveExpense').addEventListener('click', ()=>{
   const date = q('expDate').value;
   const cat  = q('expCat').value;
-  const amt  = parseFloat(q('expAmt').value);
+  const paid = parseFloat(q('expAmt').value);
+  const btw  = parseFloat(q('expBtw')?.value) || 0;
   const desc = q('expDesc').value.trim();
+  const vendor = (q('expVendor')?.value || '').trim();
+  const invoiceNo = (q('expInvoice')?.value || '').trim();
   if (!date) return toast('請選擇日期','e');
-  if (isNaN(amt)||amt<0) return toast('請輸入金額','e');
+  if (isNaN(paid)||paid<0) return toast('請輸入實付金額','e');
+  if (btw < 0 || btw > paid) return toast('BTW 金額不合理','e');
   if (!desc) return toast('請輸入說明','e');
 
   const isPrivate = document.querySelector('input[name="expPrivate"]:checked')?.value==='true';
-
-  DB.expenses.push({ id:uid(), date, category:cat, amountEur:amt, desc, isPrivate });
-  save(); closeModal('mExpense');
-  renderExpenses();
-  toast('費用已記錄','s');
+  const net = roundEur(paid - btw);
+  const id = uid();
+  const row = {
+    id, date, category: cat,
+    amountEur: net,
+    btwEur: roundEur(btw),
+    amountInclEur: roundEur(paid),
+    desc, vendor, invoiceNo, isPrivate,
+  };
+  if (btw > 0 && !isPrivate && isPreKorDate(date)) row.vatRate = 0.21;
+  DB.expenses.push(row);
+  save();
+  proofCommit('expense', id).then(() => {
+    closeModal('mExpense');
+    renderExpenses();
+    toast(btw ? `費用已記錄（未稅 ${eur(net)} · BTW ${eur(btw)}）` : '費用已記錄', 's');
+  });
 });
+
+function updateExpBtwHint() {
+  const el = q('expBtwHint');
+  if (!el) return;
+  const date = q('expDate')?.value;
+  el.textContent = (date && isPreKorDate(date))
+    ? `此日在 KOR（${korStartDate()}）之前：請填發票 BTW，可列入 omzetbelasting 進項。所得稅只扣未稅。`
+    : 'KOR 期間通常不能扣進項 BTW，請填實付含稅、BTW 留空。';
+}
+
+function updateExpNetPreview() {
+  const el = q('expNetRo');
+  if (!el) return;
+  const paid = parseFloat(q('expAmt')?.value);
+  const btw = parseFloat(q('expBtw')?.value) || 0;
+  if (isNaN(paid) || paid < 0) { el.textContent = '€ —'; return; }
+  el.textContent = eur(roundEur(paid - btw));
+}
 
 // ══════════════════════════════════════════════════════════════
 //  DOCUMENTS — tax evidence archive (opening inventory, etc.)
@@ -4927,7 +5122,7 @@ async function buildOpeningInventoryRows() {
     const qty = Number(t.quantity) || 0;
     const unit = Number(t.pricePerUnitEUR) || 0;
     const sku = productSkuCode(p, t.productId);
-    const transferDate = t.date || DB.settings.korStart || today();
+    const transferDate = t.date || companyStartDate() || today();
     const stem = evidenceNameStem(p, transferDate, t.platform || '');
     const proofs = await collectProofsForOpeningTx(t.id);
     const exportNames = [];
@@ -5054,7 +5249,7 @@ async function archiveOpeningInventoryDocument({ force = false, silent = false, 
   const totalQty = rows.reduce((s, r) => s + (r.qty || 0), 0);
   const totalValue = rows.reduce((s, r) => s + (r.line_total_eur || 0), 0);
   const proofCount = evidenceFiles.length;
-  const transferDate = DB.settings.korStart || rows[0].transfer_date || today();
+  const transferDate = companyStartDate() || rows[0].transfer_date || today();
   const doc = {
     id: existing?.id || uid(),
     type: DOC_TYPE_OPENING,
@@ -5067,7 +5262,8 @@ async function archiveOpeningInventoryDocument({ force = false, silent = false, 
     meta: {
       company: DB.settings.company || '',
       kvk: DB.settings.kvk || '',
-      korStart: DB.settings.korStart || '',
+      companyStart: companyStartDate(),
+      korStart: korStartDate(),
       fiscalYear: fiscalYear(),
     },
     disclaimer:
@@ -5276,6 +5472,48 @@ async function writeOpeningInventoryToCloud(doc, evidenceFiles) {
   }
 }
 
+function expenseReceiptsHtml() {
+  const recs = [...DB.expenses]
+    .filter(e => !e.isPrivate && (e.receiptPath || e.vendor || expenseBtwEur(e)))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  if (!recs.length) return '';
+  const rows = recs.map(e => {
+    const href = expenseReceiptHref(e);
+    return `<tr>
+      <td class="mono">${esc(e.date)}</td>
+      <td>${esc(e.vendor || '—')}</td>
+      <td>${esc(e.invoiceNo || '—')}</td>
+      <td>${esc(e.desc || '')}</td>
+      <td class="col-num">${eur(expenseNetEur(e))}</td>
+      <td class="col-num">${expenseBtwEur(e) ? eur(expenseBtwEur(e)) : '—'}</td>
+      <td class="col-num-strong">${eur(expensePaidEur(e))}</td>
+      <td>${href ? `<a class="link-btn" href="${esc(href)}" target="_blank" rel="noopener">打開發票</a>` : '—'}</td>
+    </tr>`;
+  }).join('');
+  const btw = recs.filter(isVoorbelasting).reduce((s, e) => s + expenseBtwEur(e), 0);
+  return `
+    <div class="panel docs-doc" style="margin-top:1.1rem">
+      <div class="panel-hd">
+        <div>
+          <p class="panel-title">費用發票（商業）</p>
+          <p class="docs-meta">KOR 前進項 BTW 合計 ${eur(btw)} · 檔案在 documents/receipts/</p>
+        </div>
+        <span class="docs-badge">報帳佐證</span>
+      </div>
+      <div class="inv-table-wrap docs-table-wrap">
+        <table class="inv-table docs-table">
+          <thead>
+            <tr>
+              <th>日期</th><th>廠商</th><th>訂單／發票</th><th>說明</th>
+              <th class="col-num">未稅</th><th class="col-num">BTW</th><th class="col-num">實付</th><th>檔案</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
 async function renderDocuments() {
   const root = q('docsContent');
   if (!root) return;
@@ -5306,7 +5544,7 @@ async function renderDocuments() {
       <div>
         <p class="docs-eyebrow">稅務佐證檔案庫</p>
         <h2 class="docs-title">相關文件</h2>
-        <p class="docs-lead">封存開業期初庫存清單，並把進貨時上傳的佐證圖片一併打包成 ZIP（不計入 KOR）。</p>
+        <p class="docs-lead">封存開業期初庫存清單，以及 KOR 前的費用發票（含進項 BTW）。</p>
       </div>
       <div class="docs-actions">
         <button class="btn-primary" id="btnArchiveOpening">${doc ? '重新產生並封存 ZIP' : '產生並封存 ZIP'}</button>
@@ -5322,6 +5560,7 @@ async function renderDocuments() {
         <p class="panel-title">尚無期初庫存文件</p>
         <p class="panel-desc">點上方按鈕，系統會依商業庫存中「期初庫存／來自私人」交易產生清單，並把憑證圖片放進 ZIP 的 <code>evidence/</code> 資料夾。此清單 <strong>不計入 KOR 營業額</strong>。</p>
       </div>`;
+    body += expenseReceiptsHtml();
     root.innerHTML = body;
     q('btnArchiveOpening')?.addEventListener('click', async () => {
       await archiveOpeningInventoryDocument({ force: true });
@@ -5382,6 +5621,7 @@ async function renderDocuments() {
     </div>
   `;
 
+  body += expenseReceiptsHtml();
   root.innerHTML = body;
 
   q('btnArchiveOpening')?.addEventListener('click', async () => {
@@ -5437,6 +5677,8 @@ function importJson(file) {
         DB.expenses     = parsed.expenses     || [];
         DB.documents    = Array.isArray(parsed.documents) ? parsed.documents : [];
         DB.settings     = { ...DEFAULT.settings, ...(parsed.settings||{}) };
+        migrateCompanyAndKorStart(DB.settings);
+        ensureSeededLedgerRows(DB);
         save();
         toast('資料匯入成功，重新整理中…','s');
         setTimeout(()=>location.reload(), 700);
@@ -5498,6 +5740,7 @@ function wireEvents() {
   setupProofZone('buy');
   setupProofZone('sell');
   setupProofZone('product');
+  setupProofZone('expense');
 
   // Nav
   document.querySelectorAll('.nav-link[data-tab]').forEach(l=>{
@@ -5605,9 +5848,16 @@ function wireEvents() {
     q('expDate').value=today();
     q('expCat').value='packaging';
     q('expAmt').value='';
+    if (q('expBtw')) q('expBtw').value='';
+    if (q('expVendor')) q('expVendor').value='';
+    if (q('expInvoice')) q('expInvoice').value='';
     q('expDesc').value='';
     q('mileageRow').style.display='none';
     document.querySelector('input[name="expPrivate"][value="false"]').checked=true;
+    proofStageClear('expense');
+    renderProofThumbs('expense');
+    updateExpBtwHint();
+    updateExpNetPreview();
     openModal('mExpense');
   });
   q('expCatFilter')?.addEventListener('change', renderExpenses);
@@ -5620,7 +5870,11 @@ function wireEvents() {
     const amt= km*MILEAGE_RATE;
     q('expKmCalc').textContent=`€ ${amt.toFixed(2)}`;
     q('expAmt').value=amt.toFixed(2);
+    updateExpNetPreview();
   });
+  q('expDate')?.addEventListener('change', updateExpBtwHint);
+  q('expAmt')?.addEventListener('input', updateExpNetPreview);
+  q('expBtw')?.addEventListener('input', updateExpNetPreview);
 
   // Reports
   q('rptYear')?.addEventListener('change', renderReports);
@@ -5663,9 +5917,10 @@ function wireEvents() {
 
   // Settings
   q('btnSaveSettings')?.addEventListener('click', ()=>{
-    DB.settings.company     = q('setCo').value.trim();
-    DB.settings.kvk         = q('setKvk').value.trim();
-    DB.settings.korStart    = q('setKorStart').value;
+    DB.settings.company      = q('setCo').value.trim();
+    DB.settings.kvk          = q('setKvk').value.trim();
+    if (q('setCompanyStart')) DB.settings.companyStart = q('setCompanyStart').value;
+    DB.settings.korStart     = q('setKorStart').value;
     DB.settings.fiscalYear  = parseInt(q('setYear').value);
     save(); updateKor(); renderSettings();
     toast('設定已儲存','s');
@@ -5827,6 +6082,8 @@ async function cloudAutoLoad() {
         DB.expenses     = parsed.expenses     || [];
         DB.documents    = Array.isArray(parsed.documents) ? parsed.documents : [];
         DB.settings     = { ...DEFAULT.settings, ...(parsed.settings||{}) };
+        migrateCompanyAndKorStart(DB.settings);
+        ensureSeededLedgerRows(DB);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
         toast('雲端資料已載入！', 's');
         setTimeout(() => location.reload(), 600);

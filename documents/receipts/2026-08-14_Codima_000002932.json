@@ -1,0 +1,37 @@
+{
+  "type": "expense_receipt",
+  "expenseId": "exp-codima-000002932",
+  "scope": "biz",
+  "date": "2026-08-14",
+  "orderTime": "2026-08-14T15:01:16+02:00",
+  "vendor": "Codima",
+  "vendorEmail": "info@codima.be",
+  "vendorPhone": "+32 (0)9 388 66 46",
+  "vendorUrl": "https://codima.be",
+  "invoiceNo": "000002932",
+  "paymentMethod": "iDEAL",
+  "customer": "Yi Trading / Yi C",
+  "address": "vlinderstraat 45b, 3061 VL Rotterdam, Nederland",
+  "phone": "0645948383",
+  "items": [
+    {
+      "sku": "34981",
+      "name": "TP-Link Tapo C225 QHD Security Wi-Fi Camera",
+      "qty": 2,
+      "lineInclEur": 89.9
+    }
+  ],
+  "shippingInclEur": 3.95,
+  "amountExclEur": 77.56,
+  "btwEur": 16.29,
+  "amountInclEur": 93.85,
+  "vatRate": 0.21,
+  "vatReclaimable": true,
+  "btwPeriod": "2026-Q3",
+  "btwReturnDeadline": "2026-10-31",
+  "companyStart": "2026-08-12",
+  "korStart": "2026-10-01",
+  "ibKostenEur": 77.56,
+  "receiptImage": "2026-08-14_Codima_000002932_Tapo-C225.png",
+  "note": "KOR 開始前採購。進項 BTW €16.29 列入 2026 Q3 omzetbelasting（voorbelasting）。所得稅營業費用為未稅 €77.56。"
+}

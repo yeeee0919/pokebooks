@@ -502,6 +502,7 @@ input, select { font-family: var(--font); }
 .tx-table .mono { font-family: var(--mono); color: var(--t1); font-size: .78rem; }
 .tx-table .amount { font-family: var(--mono); font-weight: 700; white-space: nowrap; }
 .tx-table .amount.buy { color: var(--red); }
+.exp-vendor { font-size: .68rem; color: var(--t3); margin-top: .12rem; }
 .tx-table .amount.sell { color: var(--green); }
 .tx-table .col-check { width: 36px; text-align: center; }
 .tx-table .col-date { white-space: nowrap; }
