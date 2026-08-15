@@ -38,7 +38,7 @@ _Avoid_: treating private acquisition cost as commercial book value
 
 **Post** — writing a complete draft into the live ledger after the owner confirms. Telegram confirm is answering 「對」 to the summary; the web inbox confirm is the 過帳 button. After a Telegram post, that chat cannot edit the row.
 
-**Live ledger** — the single backend copy of products, transactions, expenses, documents, settings (EU Postgres). The browser is not the source of truth.
+**Live ledger** — the single backend copy of products, transactions, expenses, documents, settings (Supabase Postgres). The browser is not the source of truth.
 
 **Labeled guess** — a value extracted from photo/text that is asked back as 「對嗎？」. The model has no post right and no skip right.
 
