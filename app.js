@@ -3174,7 +3174,10 @@ function ensureSeededLedgerRows(db) {
   return changed;
 }
 
-let DB = load();
+let DB = emptyLiveDb();
+let _ledgerVersion = 0;
+let _apiReady = false;
+let _ledgerPutChain = Promise.resolve();
 
 const Valuation = ValuationEngine.create(() => DB.transactions);
 const Ledger = TransactionLedger.create({
@@ -3190,46 +3193,7 @@ function computeCogs(id, date, qty, scope) { return Valuation.computeCogs(id, da
 function cogsForSell(t) { return Valuation.cogsForSell(t); }
 function txScope(t) { return ScopeLedger.normalizeScope(t, DB.transactions); }
 
-function load() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      const importedPrivIds = new Set(DEFAULT.transactions.filter(t => t.scope === 'priv').map(t => t.id));
-      const txns = (parsed.transactions && parsed.transactions.length) ? parsed.transactions : DEFAULT.transactions;
-      txns.forEach(t => {
-        if (importedPrivIds.has(t.id)) {
-          t.scope = 'priv';
-        }
-        // Fix legacy product-create: 「初始庫存」 was stored as note, not source
-        if (t.type === 'BUY' && (!t.platform || t.platform === '') && (t.note === '初始庫存' || t.note === '期初庫存')) {
-          t.platform = 'initial';
-          t.note = '';
-        }
-      });
-      ScopeLedger.normalizeScopeOnLoad(txns);
-      const settings = { ...DEFAULT.settings, ...(parsed.settings || {}) };
-      // Seed blank company fields from KVK profile (do not overwrite user edits)
-      let seeded = false;
-      if (!String(settings.company || '').trim()) { settings.company = DEFAULT.settings.company; seeded = true; }
-      if (!String(settings.kvk || '').trim()) { settings.kvk = DEFAULT.settings.kvk; seeded = true; }
-      if (!settings.fiscalYear) { settings.fiscalYear = DEFAULT.settings.fiscalYear; seeded = true; }
-      if (migrateCompanyAndKorStart(settings)) seeded = true;
-      const db = {
-        ...DEFAULT,
-        ...parsed,
-        transactions: txns,
-        settings,
-        expenses: parsed.expenses || [],
-        documents: Array.isArray(parsed.documents) ? parsed.documents : [],
-      };
-      if (ensureSeededLedgerRows(db)) seeded = true;
-      if (seeded) {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); } catch (e) {}
-      }
-      return db;
-    }
-  } catch(e) {}
+function emptyLiveDb() {
   const fresh = JSON.parse(JSON.stringify(DEFAULT));
   ScopeLedger.normalizeScopeOnLoad(fresh.transactions);
   migrateCompanyAndKorStart(fresh.settings);
@@ -3237,9 +3201,90 @@ function load() {
   return fresh;
 }
 
+function hydrateLedger(parsed) {
+  const importedPrivIds = new Set(DEFAULT.transactions.filter(t => t.scope === 'priv').map(t => t.id));
+  const txns = Array.isArray(parsed.transactions)
+    ? parsed.transactions
+    : JSON.parse(JSON.stringify(DEFAULT.transactions));
+  txns.forEach(t => {
+    if (importedPrivIds.has(t.id)) {
+      t.scope = 'priv';
+    }
+    if (t.type === 'BUY' && (!t.platform || t.platform === '') && (t.note === '初始庫存' || t.note === '期初庫存')) {
+      t.platform = 'initial';
+      t.note = '';
+    }
+  });
+  ScopeLedger.normalizeScopeOnLoad(txns);
+  const settings = { ...DEFAULT.settings, ...(parsed.settings || {}) };
+  if (!String(settings.company || '').trim()) settings.company = DEFAULT.settings.company;
+  if (!String(settings.kvk || '').trim()) settings.kvk = DEFAULT.settings.kvk;
+  if (!settings.fiscalYear) settings.fiscalYear = DEFAULT.settings.fiscalYear;
+  migrateCompanyAndKorStart(settings);
+  const db = {
+    ...DEFAULT,
+    ...parsed,
+    transactions: txns,
+    settings,
+    expenses: parsed.expenses || [],
+    documents: Array.isArray(parsed.documents) ? parsed.documents : [],
+  };
+  ensureSeededLedgerRows(db);
+  return db;
+}
+
+function loadLocalSnapshot() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return hydrateLedger(JSON.parse(raw));
+  } catch (e) {}
+  return null;
+}
+
+function ledgerPayload(db) {
+  return {
+    products: db.products,
+    transactions: db.transactions,
+    expenses: db.expenses,
+    documents: ensureDocumentsArray(),
+    settings: db.settings,
+  };
+}
+
+function applyLiveDb(db) {
+  DB.products = db.products;
+  DB.transactions = db.transactions;
+  DB.expenses = db.expenses;
+  DB.documents = db.documents || [];
+  DB.settings = db.settings;
+}
+
 function save() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
-  cloudAutoSave(); // fire-and-forget
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(ledgerPayload(DB))); } catch (e) {}
+  cloudAutoSave();
+  if (_apiReady) queueLedgerPut();
+}
+
+function queueLedgerPut() {
+  _ledgerPutChain = _ledgerPutChain.then(async () => {
+    try {
+      const saved = await PokeApi.putLedger(ledgerPayload(DB), _ledgerVersion);
+      _ledgerVersion = saved.version;
+    } catch (e) {
+      if (e.status === 409 && e.data?.ledger) {
+        applyLiveDb(hydrateLedger(e.data.ledger));
+        _ledgerVersion = e.data.version;
+        toast('活帳有更新，已重新載入後端版本', 'w');
+        refreshCurrentView();
+      } else if (e.status === 401) {
+        _apiReady = false;
+        showLoginGate('登入已過期，請重新登入');
+      } else {
+        console.warn('[ledger] put failed', e);
+        toast('同步後端失敗：' + (e.message || e), 'e');
+      }
+    }
+  });
 }
 
 // ── UID ────────────────────────────────────────────────────────
@@ -3319,6 +3364,7 @@ const TAB_TITLES = {
   'inventory-priv': '👤 私人庫存 (個人)',
   transactions:     '交易記錄',
   expenses:         '費用記錄',
+  inbox:            '待補收件匣',
   reports:          '損益報表',
   calendar:         '報稅行事曆',
   documents:        '相關文件',
@@ -3344,6 +3390,7 @@ function renderTab(tab) {
     case 'inventory-priv':  renderInventoryPage('priv');    break;
     case 'transactions':    renderTransactions();           break;
     case 'expenses':        renderExpenses();               break;
+    case 'inbox':           renderInbox();                  break;
     case 'reports':         renderReports();                break;
     case 'calendar':        renderCalendar();               break;
     case 'documents':       renderDocuments();              break;
@@ -4291,6 +4338,145 @@ function renderSettings() {
     ? '最後手動備份：'+new Date(DB.settings.lastBackup).toLocaleString('zh-TW')
     : '尚未手動備份';
   renderCloudStatus();
+  renderTelegramStatus();
+}
+
+async function renderTelegramStatus() {
+  const pairedEl = q('tgPaired');
+  const noteEl = q('tgPairNote');
+  if (!pairedEl) return;
+  try {
+    const st = await PokeApi.pairStatus();
+    pairedEl.textContent = st.paired ? `已綁定 Telegram（id ${st.userId}）` : '尚未配對';
+    noteEl.textContent = st.pairedAt
+      ? '配對時間 ' + new Date(st.pairedAt).toLocaleString('zh-TW')
+      : '產生配對碼後十分鐘內，在 Bot 傳 /start 配對碼';
+  } catch (e) {
+    pairedEl.textContent = '無法讀取配對狀態';
+    noteEl.textContent = e.message || '';
+  }
+}
+
+const INBOX_KIND = { BUY:'進貨', SELL:'銷售', EXPENSE:'費用' };
+const INBOX_SCOPE = { biz:'商務', priv:'私人' };
+const INBOX_CATS = {
+  packaging:'包材/運費', platform_fee:'平台費', grading_fee:'評級費',
+  mileage:'里程費', travel:'出差費', accountant:'會計師費', equipment:'設備', other:'其他',
+};
+
+async function renderInbox() {
+  const root = q('inboxList');
+  if (!root) return;
+  root.innerHTML = '<p class="panel-desc">載入中…</p>';
+  try {
+    const { drafts } = await PokeApi.listDrafts();
+    if (!drafts?.length) {
+      root.innerHTML = '<p class="panel-desc">沒有進行中或待補的草稿。Telegram 傳照片會出現在這裡。</p>';
+      return;
+    }
+    root.innerHTML = drafts.map(d => inboxCardHtml(d)).join('');
+    root.querySelectorAll('[data-inbox-save]').forEach(btn => {
+      btn.onclick = () => saveInboxCard(btn.dataset.inboxSave);
+    });
+    root.querySelectorAll('[data-inbox-post]').forEach(btn => {
+      btn.onclick = () => postInboxCard(btn.dataset.inboxPost);
+    });
+  } catch (e) {
+    root.innerHTML = `<p class="login-err">${esc(e.message || '載入失敗')}</p>`;
+  }
+}
+
+function inboxCardHtml(d) {
+  const f = d.fields || {};
+  const id = d.id;
+  const photos = (d.photos || []).map(p =>
+    `<a href="${PokeApi.photoUrl(p.id)}" target="_blank"><img src="${PokeApi.photoUrl(p.id)}" alt=""/></a>`
+  ).join('');
+  const prodOpts = ['<option value="">— 選庫存商品 —</option>']
+    .concat(DB.products.map(p => `<option value="${esc(p.id)}"${f.productId===p.id?' selected':''}>${esc(p.name)}</option>`))
+    .join('');
+  const catOpts = Object.entries(INBOX_CATS).map(([k,l]) =>
+    `<option value="${k}"${f.category===k?' selected':''}>${l}</option>`
+  ).join('');
+  return `<div class="inbox-card" id="inbox-${id}">
+    <h3>${esc(INBOX_KIND[f.kind] || '未分類')} · ${esc(INBOX_SCOPE[f.scope] || '—')} · ${d.status==='active'?'進行中':'待補'}</h3>
+    <p class="inbox-meta">${esc(id.slice(0,8))} · 更新 ${esc((d.updatedAt||'').slice(0,19).replace('T',' '))}</p>
+    <div class="inbox-photos">${photos}</div>
+    <div class="inbox-grid">
+      <div class="fg"><label>類型</label>
+        <select class="finp" data-f="kind"><option value="">—</option>
+          <option value="BUY"${f.kind==='BUY'?' selected':''}>進貨</option>
+          <option value="SELL"${f.kind==='SELL'?' selected':''}>銷售</option>
+          <option value="EXPENSE"${f.kind==='EXPENSE'?' selected':''}>費用</option>
+        </select></div>
+      <div class="fg"><label>商務/私人</label>
+        <select class="finp" data-f="scope"><option value="">—</option>
+          <option value="biz"${f.scope==='biz'?' selected':''}>商務</option>
+          <option value="priv"${f.scope==='priv'?' selected':''}>私人</option>
+        </select></div>
+      <div class="fg"><label>日期</label><input class="finp" type="date" data-f="date" value="${esc(f.date||'')}"/></div>
+      <div class="fg"><label>歐元金額</label><input class="finp" type="number" step="0.01" data-f="amountEur" value="${f.amountEur??''}"/></div>
+      <div class="fg"><label>BTW</label><input class="finp" type="number" step="0.01" data-f="btwEur" value="${f.btwEur??''}"/></div>
+      <div class="fg"><label>數量</label><input class="finp" type="number" data-f="quantity" value="${f.quantity??''}"/></div>
+      <div class="fg"><label>單價</label><input class="finp" type="number" step="0.01" data-f="pricePerUnitEUR" value="${f.pricePerUnitEUR??''}"/></div>
+      <div class="fg"><label>類別</label><select class="finp" data-f="category"><option value="">—</option>${catOpts}</select></div>
+      <div class="fg"><label>商品</label><select class="finp" data-f="productId">${prodOpts}</select></div>
+      <div class="fg"><label>來源</label><input class="finp" data-f="platform" value="${esc(f.platform||'')}"/></div>
+      <div class="fg"><label>商家</label><input class="finp" data-f="vendor" value="${esc(f.vendor||'')}"/></div>
+      <div class="fg" style="grid-column:1/-1"><label>說明</label><input class="finp" data-f="desc" value="${esc(f.desc||'')}"/></div>
+    </div>
+    <div class="inbox-actions">
+      <button class="btn-secondary" data-inbox-save="${id}">儲存草稿</button>
+      <button class="btn-primary" data-inbox-post="${id}">過帳</button>
+    </div>
+  </div>`;
+}
+
+function inboxFieldsFromCard(id) {
+  const card = q('inbox-' + id);
+  const fields = {};
+  card.querySelectorAll('[data-f]').forEach(el => {
+    const k = el.dataset.f;
+    let v = el.value;
+    if (['amountEur','btwEur','quantity','pricePerUnitEUR'].includes(k)) {
+      v = v === '' ? null : Number(v);
+    }
+    fields[k] = v;
+  });
+  if (fields.productId) {
+    const p = DB.products.find(x => x.id === fields.productId);
+    fields.productName = p?.name || '';
+  }
+  if (fields.btwEur != null) fields.btwAnswered = true;
+  if (fields.kind === 'EXPENSE' && fields.btwEur == null) {
+    /* keep unanswered until user fills 0 */
+  }
+  return fields;
+}
+
+async function saveInboxCard(id) {
+  try {
+    await PokeApi.patchDraft(id, inboxFieldsFromCard(id), 'pending');
+    toast('草稿已存', 's');
+    renderInbox();
+  } catch (e) { toast(e.message || '儲存失敗', 'e'); }
+}
+
+async function postInboxCard(id) {
+  try {
+    await PokeApi.patchDraft(id, inboxFieldsFromCard(id));
+    const result = await PokeApi.postDraft(id);
+    if (result.ledger) {
+      applyLiveDb(hydrateLedger(result.ledger));
+      _ledgerVersion = result.version;
+    }
+    toast('已過帳', 's');
+    refreshCurrentView();
+    renderInbox();
+  } catch (e) {
+    const miss = e.data?.missing;
+    toast(miss ? '還缺：' + miss.join(', ') : (e.message || '過帳失敗'), 'e');
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -4578,11 +4764,12 @@ function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
   let scopeVal = editTx ? ScopeLedger.uiScopeForTx(editTx) : (presetScope === 'all' ? 'biz' : presetScope);
   _sellScopeLock = null;
   if (!editTx) {
-    // Inventory context wins: private page / private detail ⇒ private sale only
-    if (tab === 'inventory-priv' || presetScope === 'priv') {
+    // Lock only when opened from an inventory tab. Transactions「記錄銷售」
+    // keeps free choice — presetScope only preselects, it must not lock.
+    if (tab === 'inventory-priv') {
       scopeVal = 'priv';
       _sellScopeLock = 'priv';
-    } else if (tab === 'inventory-biz' || presetScope === 'biz') {
+    } else if (tab === 'inventory-biz') {
       scopeVal = 'biz';
       _sellScopeLock = 'biz';
     }
@@ -5777,6 +5964,12 @@ function wireEvents() {
     l.addEventListener('click', ()=>switchTab(l.dataset.tab));
   });
 
+  q('btnLogin')?.addEventListener('click', doLogin);
+  q('loginPassword')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  q('btnLogout')?.addEventListener('click', doLogout);
+  q('btnTgPair')?.addEventListener('click', doTelegramPair);
+  q('btnInboxReload')?.addEventListener('click', () => renderInbox());
+
   // Scope Button Groups toggle
   document.querySelectorAll('.scope-btn').forEach(btn => {
     btn.addEventListener('click', e => {
@@ -6181,18 +6374,88 @@ async function initCloud() {
 // ══════════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════════
-async function init() {
-  wireEvents();
+function showLoginGate(msg) {
+  const gate = q('loginGate');
+  const app = q('app');
+  if (gate) gate.hidden = false;
+  if (app) app.hidden = true;
+  const err = q('loginErr');
+  if (err) {
+    if (msg) { err.hidden = false; err.textContent = msg; }
+    else err.hidden = true;
+  }
+}
+
+function hideLoginGate() {
+  const gate = q('loginGate');
+  const app = q('app');
+  if (gate) gate.hidden = true;
+  if (app) app.hidden = false;
+}
+
+async function doLogin() {
+  const err = q('loginErr');
+  try {
+    await PokeApi.login(q('loginPassword').value);
+    await enterApp();
+  } catch (e) {
+    showLoginGate(e.status === 401 ? '密碼錯誤' : (e.message || '登入失敗'));
+  }
+}
+
+async function doLogout() {
+  try { await PokeApi.logout(); } catch (e) {}
+  _apiReady = false;
+  showLoginGate('已登出');
+}
+
+async function doTelegramPair() {
+  try {
+    const r = await PokeApi.pairStart();
+    const el = q('tgPairCode');
+    if (el) el.textContent = r.code + '  （十分鐘內有效）';
+    toast('在 Telegram Bot 傳：/start ' + r.code, 's');
+  } catch (e) {
+    toast(e.message || '無法產生配對碼', 'e');
+  }
+}
+
+async function bootLedger() {
+  const data = await PokeApi.getLedger();
+  const serverHasTx = (data.ledger?.products || []).length > 0 || (data.ledger?.transactions || []).length > 0;
+  const local = loadLocalSnapshot();
+  if (!data.version && !serverHasTx && local && local.products.length) {
+    const saved = await PokeApi.putLedger(ledgerPayload(local), data.version);
+    applyLiveDb(hydrateLedger(saved.ledger));
+    _ledgerVersion = saved.version;
+    toast('已把本機帳本匯入後端（一次）。之後以伺服器為準。', 's');
+    return;
+  }
+  applyLiveDb(hydrateLedger(data.ledger || emptyLiveDb()));
+  _ledgerVersion = data.version || 0;
+}
+
+async function enterApp() {
+  hideLoginGate();
+  await bootLedger();
+  _apiReady = true;
   updateKor();
-  switchTab('dashboard');
+  switchTab(currentTab() || 'dashboard');
   await initCloud();
   maybeToastTaxDeadline();
+}
 
-  // First-time welcome
-  if (!DB.products.length && !DB.settings.company) {
-    setTimeout(()=>{
-      toast('👋 歡迎！可匯入舊版 PokeLedger 備份 JSON，或手動新增商品開始記帳。','w');
-    }, 800);
+async function init() {
+  wireEvents();
+  try {
+    const me = await PokeApi.me();
+    if (!me.ok) {
+      showLoginGate();
+      return;
+    }
+    await enterApp();
+  } catch (e) {
+    showLoginGate('後端未連線。請在 Vercel 設定 DATABASE_URL、SESSION_SECRET、OWNER_PASSWORD。');
   }
 }
 

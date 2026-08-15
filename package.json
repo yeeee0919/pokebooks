@@ -1,0 +1,11 @@
+{
+  "name": "pokeledger",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/inbox-repro.mjs && node scripts/scope-isolation-repro.mjs && node scripts/sell-scope-lock-repro.mjs"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.1"
+  }
+}

@@ -12,7 +12,23 @@
 </head>
 <body>
 
-<div id="app">
+<div id="loginGate">
+  <div class="login-card">
+    <div class="brand" style="justify-content:center;margin-bottom:1.25rem">
+      <span class="brand-icon">🃏</span>
+      <div class="brand-text">
+        <span class="brand-name">PokeLedger</span>
+        <span class="brand-sub">擁有者登入</span>
+      </div>
+    </div>
+    <p class="login-note">活帳在歐盟後端。沒登入看不到庫存、報表、待補。</p>
+    <div class="fg"><label>密碼</label><input type="password" id="loginPassword" class="finp" autocomplete="current-password"/></div>
+    <p class="login-err" id="loginErr" hidden></p>
+    <button class="btn-primary" id="btnLogin" style="width:100%">登入</button>
+  </div>
+</div>
+
+<div id="app" hidden>
 
   <!-- ═══ TOP NAV ═══ -->
   <aside class="sidebar topnav">
@@ -31,6 +47,7 @@
         <a class="nav-link" data-tab="inventory-priv"><span class="nav-ico">👤</span><span>私人庫存</span></a>
         <a class="nav-link" data-tab="transactions"><span class="nav-ico">↕️</span><span>交易</span></a>
         <a class="nav-link" data-tab="expenses"><span class="nav-ico">💸</span><span>費用</span></a>
+        <a class="nav-link" data-tab="inbox"><span class="nav-ico">📥</span><span>待補</span></a>
         <a class="nav-link" data-tab="reports"><span class="nav-ico">📋</span><span>損益</span></a>
         <a class="nav-link" data-tab="calendar"><span class="nav-ico">📅</span><span>行事曆</span></a>
         <a class="nav-link" data-tab="documents"><span class="nav-ico">📁</span><span>文件</span></a>
@@ -215,6 +232,15 @@
         <div id="expList"></div>
       </div>
 
+      <!-- ── INBOX ── -->
+      <div class="view" id="view-inbox">
+        <div class="toolbar toolbar-card">
+          <div class="tl"><p class="panel-desc" style="margin:0">Telegram 與網頁改的是同一份草稿。必填齊了才能過帳；未過帳不進 KOR。</p></div>
+          <div class="tr"><button class="btn-secondary" id="btnInboxReload">🔄 重新整理</button></div>
+        </div>
+        <div id="inboxList"></div>
+      </div>
+
       <!-- ── REPORTS ── -->
       <div class="view" id="view-reports">
         <div class="toolbar toolbar-card">
@@ -245,6 +271,22 @@
             <div class="fg"><label>KOR 開始日期</label><input type="date" id="setKorStart" class="finp"/></div>
             <div class="fg"><label>目前稅年</label><select id="setYear" class="finp"><option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option></select></div>
             <button class="btn-primary" id="btnSaveSettings">儲存</button>
+          </div>
+          <div class="panel">
+            <p class="panel-title">📱 Telegram 擷取</p>
+            <p class="panel-desc">v1 只綁你一個帳號。在 Bot 傳 <span class="mono">/start 配對碼</span>。</p>
+            <div class="cloud-status" id="tgStatus">
+              <div class="cs-icon">📱</div>
+              <div class="cs-info">
+                <div class="cs-folder" id="tgPaired">尚未配對</div>
+                <div class="cs-note" id="tgPairNote">產生配對碼後十分鐘內有效</div>
+              </div>
+            </div>
+            <div class="bkp-row">
+              <button class="btn-primary" id="btnTgPair">產生配對碼</button>
+              <button class="btn-secondary" id="btnLogout">登出</button>
+            </div>
+            <p id="tgPairCode" class="bkp-note" style="font-family:var(--mono);font-size:1.1rem;letter-spacing:.12em"></p>
           </div>
           <div class="panel">
             <p class="panel-title">☁️ 雲端自動備份</p>
@@ -672,6 +714,7 @@
 <script src="scope.js"></script>
 <script src="valuation.js"></script>
 <script src="ledger.js"></script>
+<script src="client-api.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

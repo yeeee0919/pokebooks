@@ -30,6 +30,20 @@ _Avoid_: treating private acquisition cost as commercial book value
 
 **Private inventory** — stock figures filtered to `scope === 'priv'`. Excluded from KOR and business P&L.
 
+## Capture inbox
+
+**Capture inbox** — Telegram (v1) and the web 待補 list are clients of the same draft store. A message or photo becomes a **draft**, not a posted ledger row.
+
+**Draft** — an incomplete capture. Missing required fields stay `pending` / `active`. Drafts do not affect KOR, inventory, WACC, COGS, or P&L.
+
+**Post** — writing a complete draft into the live ledger after the owner confirms. Telegram confirm is answering 「對」 to the summary; the web inbox confirm is the 過帳 button. After a Telegram post, that chat cannot edit the row.
+
+**Live ledger** — the single backend copy of products, transactions, expenses, documents, settings (EU Postgres). The browser is not the source of truth.
+
+**Labeled guess** — a value extracted from photo/text that is asked back as 「對嗎？」. The model has no post right and no skip right.
+
+_Avoid_: treating a Telegram message as posted; creating products from chat; using a non-ECB rate; posting a pre-KOR business expense without a BTW answer (including 「沒有」)
+
 ## Modules (architecture)
 
 **Scope Ledger** (`scope.js`) — normalizes scope, creates scope pairs, and enforces delete/edit rules across paired transactions.
@@ -37,6 +51,8 @@ _Avoid_: treating private acquisition cost as commercial book value
 **Valuation Engine** (`valuation.js`) — WACC, COGS, and quantity calculations; owns cache invalidation.
 
 **Transaction Ledger** (`ledger.js`) — CRUD seam for transactions; returns enriched view models for UI render adapters.
+
+**Capture inbox** (`lib/conversation.js`, `lib/post.js`) — draft Q&A and the completeness gate before post. BUY/SELL post reuses Scope Ledger / Transaction Ledger so pairing and COGS stay consistent.
 
 ## KOR & BTW
 
