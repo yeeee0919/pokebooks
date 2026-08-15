@@ -68,7 +68,9 @@ import { fileURLToPath } from 'url';
 
 const appPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'app.js');
 const app = fs.readFileSync(appPath, 'utf8');
-const sellBlock = app.slice(app.indexOf('function openModalSell'), app.indexOf('function sellFormScope'));
+const start = app.indexOf('function openModalSell');
+const end = app.indexOf('\nfunction updateSellScopeUI', start);
+const sellBlock = app.slice(start, end === -1 ? undefined : end);
 
 assert(
   !/presetScope\s*===\s*['"]biz['"]/.test(sellBlock),

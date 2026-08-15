@@ -526,9 +526,6 @@
     <div class="mhd"><h2>💰 記錄銷售</h2><button class="mclose" data-close="mSell">&times;</button></div>
     <div class="mbd">
       <input type="hidden" id="sellEditId"/>
-      <div class="fg"><label>商品 <span class="req">*</span></label>
-        <select id="sellProductId" class="finp"><option value="">— 選擇商品 —</option></select>
-      </div>
       <div class="fg">
         <label>帳戶歸屬 <span class="req">*</span></label>
         <input type="hidden" id="sellScope" value="biz"/>
@@ -538,17 +535,18 @@
         </div>
         <p class="field-hint" id="sellScopeHint">商業銷售只記入商業帳並計入 KOR；私人銷售不計入 KOR</p>
       </div>
+      <div class="fg">
+        <label>銷售品項 <span class="req">*</span></label>
+        <div class="sell-lines" id="sellLines"></div>
+        <button type="button" class="btn-secondary btn-sm" id="btnAddSellLine">＋ 加一列</button>
+        <p class="field-hint">可一次選多個品相／商品，共用下方日期與平台。</p>
+      </div>
       <div class="cost-preview" id="sellCostPreview" style="display:none"></div>
       <div class="frow">
-        <div class="fg"><label>數量 <span class="req">*</span></label><input type="number" id="sellQty" class="finp" value="1" min="1"/></div>
-        <div class="fg"><label>售價/張（EUR）<span class="req">*</span></label><input type="number" id="sellPrice" class="finp" placeholder="0.00" min="0" step="0.01"/></div>
         <div class="fg"><label>日期 <span class="req">*</span></label><input type="date" id="sellDate" class="finp"/></div>
-      </div>
-      <div class="frow">
         <div class="fg"><label>平台</label>
           <select id="sellPlatform" class="finp"><option value="CM">Cardmarket</option><option value="Vinted">Vinted</option><option value="面交">現場面交</option><option value="">其他</option></select>
         </div>
-        <div class="fg"><label>手續費（EUR，總計）</label><input type="number" id="sellFee" class="finp" placeholder="0.00" min="0" step="0.01"/></div>
         <div class="fg"><label>買家國別</label>
           <select id="sellCountry" class="finp"><option value="NL">🇳🇱 荷蘭</option><option value="BE">🇧🇪 比利時</option><option value="DE">🇩🇪 德國</option><option value="EU_other">其他歐盟</option><option value="non_EU">非歐盟</option></select>
         </div>

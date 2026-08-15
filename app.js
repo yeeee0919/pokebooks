@@ -4756,6 +4756,102 @@ q('btnSaveBuy').addEventListener('click', ()=>{
 // ══════════════════════════════════════════════════════════════
 let _sellScopeLock = null; // 'priv' | 'biz' | null — lock when opened from inventory tab
 
+function sellFormScope() {
+  return q('sellScope')?.value || 'biz';
+}
+
+function sellEditTx() {
+  const editId = q('sellEditId')?.value;
+  return editId ? Ledger.findById(editId) : null;
+}
+
+function sellInStockProducts(editTx) {
+  const scope = sellFormScope();
+  return DB.products.filter(p => getQty(p.id, scope) > 0 || (editTx && p.id === editTx.productId));
+}
+
+function sellProductOptionsHtml(selectedId, editTx) {
+  return '<option value="">— 選擇商品 —</option>' +
+    sellInStockProducts(editTx).map(p =>
+      `<option value="${p.id}"${p.id === selectedId ? ' selected' : ''}>${esc(p.name)} (${p.type})</option>`
+    ).join('');
+}
+
+function collectSellLines() {
+  return [...(q('sellLines')?.querySelectorAll('.sell-line') || [])].map(row => ({
+    productId: row.querySelector('.sell-line-product')?.value || '',
+    qty: parseInt(row.querySelector('.sell-line-qty')?.value, 10),
+    price: parseFloat(row.querySelector('.sell-line-price')?.value),
+    fee: parseFloat(row.querySelector('.sell-line-fee')?.value) || 0,
+  }));
+}
+
+function updateSellLinesChrome() {
+  const editing = !!q('sellEditId')?.value;
+  const addBtn = q('btnAddSellLine');
+  if (addBtn) addBtn.hidden = editing;
+  const lines = q('sellLines')?.querySelectorAll('.sell-line') || [];
+  lines.forEach(row => {
+    const rm = row.querySelector('.sell-line-remove');
+    if (rm) rm.hidden = editing || lines.length <= 1;
+  });
+}
+
+function wireSellLine(row) {
+  row.querySelector('.sell-line-product')?.addEventListener('change', updateSellCostPreview);
+  row.querySelector('.sell-line-qty')?.addEventListener('input', () => { updateSellCostPreview(); updateKorCheck(); });
+  row.querySelector('.sell-line-price')?.addEventListener('input', () => { updateProfitPreview(); updateKorCheck(); });
+  row.querySelector('.sell-line-fee')?.addEventListener('input', updateProfitPreview);
+  row.querySelector('.sell-line-remove')?.addEventListener('click', () => {
+    const lines = q('sellLines').querySelectorAll('.sell-line');
+    if (lines.length <= 1) return toast('至少保留一列', 'w');
+    row.remove();
+    updateSellLinesChrome();
+    updateSellCostPreview();
+  });
+}
+
+function addSellLine({ productId = '', qty = '1', price = '', fee = '' } = {}) {
+  const wrap = q('sellLines');
+  if (!wrap) return;
+  const editTx = sellEditTx();
+  const row = document.createElement('div');
+  row.className = 'sell-line';
+  const priceVal = price === '' || price == null ? '' : String(price);
+  const feeVal = fee === '' || fee == null ? '' : String(fee);
+  row.innerHTML =
+    `<div class="fg sell-line-product-wrap"><label>商品 <span class="req">*</span></label>` +
+    `<select class="finp sell-line-product">${sellProductOptionsHtml(productId, editTx)}</select></div>` +
+    `<div class="fg"><label>數量 <span class="req">*</span></label>` +
+    `<input type="number" class="finp sell-line-qty" value="${esc(String(qty))}" min="1"/></div>` +
+    `<div class="fg"><label>售價/張（EUR）<span class="req">*</span></label>` +
+    `<input type="number" class="finp sell-line-price" value="${esc(priceVal)}" placeholder="0.00" min="0" step="0.01"/></div>` +
+    `<div class="fg"><label>手續費（EUR）</label>` +
+    `<input type="number" class="finp sell-line-fee" value="${esc(feeVal)}" placeholder="0.00" min="0" step="0.01"/></div>` +
+    `<button type="button" class="sell-line-remove" title="移除此列" aria-label="移除此列">&times;</button>`;
+  wrap.appendChild(row);
+  wireSellLine(row);
+  updateSellLinesChrome();
+  updateSellCostPreview();
+}
+
+function resetSellLines(initialLines) {
+  const wrap = q('sellLines');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  (initialLines.length ? initialLines : [{}]).forEach(line => addSellLine(line));
+}
+
+function refreshSellLineProductOptions() {
+  const editTx = sellEditTx();
+  q('sellLines')?.querySelectorAll('.sell-line').forEach(row => {
+    const sel = row.querySelector('.sell-line-product');
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = sellProductOptionsHtml(cur, editTx);
+  });
+}
+
 function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
   const editTx = editTxId ? Ledger.findById(editTxId) : null;
   q('sellEditId').value = editTxId||'';
@@ -4777,23 +4873,22 @@ function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
   setScopeValue('sellScope', scopeVal);
   updateSellScopeUI();
 
-  const sel = q('sellProductId');
-  const inStock = DB.products.filter(p=>getQty(p.id, scopeVal)>0 || (editTx && p.id===editTx.productId));
-  const targetPid = editTx ? editTx.productId : presetProductId;
+  if (editTx) {
+    resetSellLines([{
+      productId: editTx.productId,
+      qty: editTx.quantity,
+      price: editTx.pricePerUnitEUR,
+      fee: editTx.fee || '',
+    }]);
+  } else {
+    resetSellLines([{ productId: presetProductId || '', qty: '1', price: '', fee: '' }]);
+  }
 
-  sel.innerHTML = '<option value="">— 選擇商品 —</option>' +
-    inStock.map(p=>`<option value="${p.id}"${p.id===targetPid?' selected':''}>${esc(p.name)} (${p.type})</option>`).join('');
-
-  q('sellQty').value    = editTx ? editTx.quantity : '1';
-  q('sellPrice').value  = editTx ? editTx.pricePerUnitEUR : '';
   q('sellDate').value   = editTx ? editTx.date : today();
   q('sellPlatform').value= editTx ? (editTx.platform||'CM') : 'CM';
-  q('sellFee').value    = editTx ? (editTx.fee||'') : '';
-  
   q('sellCountry').value= 'NL';
   q('sellNote').value   = editTx ? (editTx.note||'') : '';
   q('ossAlert').style.display='none';
-  q('sellCostPreview').style.display='none';
   q('sellKorCheck').textContent='';
   // Clear staged images and load existing if editing
   proofStageClear('sell');
@@ -4801,14 +4896,9 @@ function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
   if (editTxId) {
     proofGetAll(editTxId).then(recs => renderProofThumbs('sell', recs));
   }
-  updateProfitPreview();
-  if (targetPid) updateSellCostPreview();
+  updateSellCostPreview();
   updateKorCheck();
   openModal('mSell');
-}
-
-function sellFormScope() {
-  return q('sellScope')?.value || 'biz';
 }
 
 function updateSellScopeUI() {
@@ -4838,109 +4928,180 @@ function updateSellScopeUI() {
 }
 
 function updateSellCostPreview() {
-  const productId = q('sellProductId').value;
-  if (!productId) { q('sellCostPreview').style.display='none'; return; }
-  const qty  = parseInt(q('sellQty').value)||1;
+  const lines = collectSellLines().filter(l => l.productId);
+  const preview = q('sellCostPreview');
+  if (!preview) return;
+  if (!lines.length) {
+    preview.style.display = 'none';
+    updateProfitPreview();
+    updateKorCheck();
+    return;
+  }
   const scope = sellFormScope();
-  const wacc = getWACC(productId, today(), scope);
-  const avail= getQty(productId, scope);
-  q('sellCostPreview').style.display='block';
-  q('sellCostPreview').innerHTML = `加權平均成本 <strong>${eur(wacc)}/張</strong>（FIFO WAC） · 在庫 <strong>${avail}</strong> 張 · ${scope==='priv'?'👤 私人':'🏢 商業'}`;
+  const parts = lines.map(l => {
+    const p = DB.products.find(x => x.id === l.productId);
+    const wacc = getWACC(l.productId, today(), scope);
+    const avail = getQty(l.productId, scope);
+    return `${esc(p?.name || '?')}：WAC <strong>${eur(wacc)}</strong> · 在庫 <strong>${avail}</strong>`;
+  });
+  preview.style.display = 'block';
+  preview.innerHTML = parts.join('<br>') + ` · ${scope === 'priv' ? '👤 私人' : '🏢 商業'}`;
   updateProfitPreview();
   updateKorCheck();
 }
 
 function updateProfitPreview() {
-  const productId = q('sellProductId').value;
-  const qty   = parseInt(q('sellQty').value)||0;
-  const price = parseFloat(q('sellPrice').value)||0;
-  const fee   = parseFloat(q('sellFee').value)||0;
+  const lines = collectSellLines();
   const scope = sellFormScope();
-  const rev   = price * qty;
-  const cogs  = productId&&qty ? computeCogs(productId, today(), qty, scope) : 0;
-  const gp    = rev - fee - cogs;
+  let rev = 0, fee = 0, cogs = 0, any = false;
+  for (const l of lines) {
+    if (!l.productId) continue;
+    any = true;
+    const qty = l.qty > 0 ? l.qty : 0;
+    const price = isNaN(l.price) ? 0 : l.price;
+    rev += price * qty;
+    fee += l.fee || 0;
+    if (qty) cogs += computeCogs(l.productId, today(), qty, scope);
+  }
+  const gp = rev - fee - cogs;
   q('pb-rev').textContent  = eur(rev);
   q('pb-fee').textContent  = eur(fee);
-  q('pb-cogs').textContent = productId ? eur(cogs) : '—';
-  q('pb-gp').textContent   = productId ? eur(gp) : '—';
-  q('pb-gp').style.color   = gp>=0?'var(--green)':'var(--red)';
+  q('pb-cogs').textContent = any ? eur(cogs) : '—';
+  q('pb-gp').textContent   = any ? eur(gp) : '—';
+  q('pb-gp').style.color   = gp >= 0 ? 'var(--green)' : 'var(--red)';
 }
 
 function updateKorCheck() {
   const el = q('sellKorCheck');
   if (!el) return;
   const scope = sellFormScope();
-  const price  = parseFloat(q('sellPrice').value)||0;
-  const qty    = parseInt(q('sellQty').value)||1;
+  const lines = collectSellLines();
+  const revAdd = lines.reduce((s, l) => {
+    if (!l.productId || isNaN(l.price) || !(l.qty > 0)) return s;
+    return s + l.price * l.qty;
+  }, 0);
   if (scope === 'priv') {
     el.className = 'kor-check ok';
-    el.textContent = price
+    el.textContent = revAdd
       ? '👤 私人銷售：不計入 KOR，也不會寫入商業庫存／營業額。'
       : '👤 目前為私人帳戶：不計入 KOR。';
     return;
   }
-  if (!price) { el.className='kor-check'; el.textContent=''; return; }
-  const newRev = korRevenue(fiscalYear()) + price*qty;
+  if (!revAdd) { el.className = 'kor-check'; el.textContent = ''; return; }
+  const newRev = korRevenue(fiscalYear()) + revAdd;
   if (newRev > KOR_LIMIT) {
-    el.className='kor-check danger';
-    el.textContent=`🚨 此筆後年度 KOR 達 ${eur(newRev)}，超過上限 €20,000！先別急著賣——跟我說，我們一起處理 BTW。`;
-  } else if (newRev > KOR_LIMIT*0.9) {
-    el.className='kor-check danger';
-    el.textContent=`⚠️ 此筆後年度 KOR 達 ${eur(newRev)}（${pct(newRev/KOR_LIMIT*100)}），接近上限！`;
+    el.className = 'kor-check danger';
+    el.textContent = `🚨 此筆後年度 KOR 達 ${eur(newRev)}，超過上限 €20,000！先別急著賣——跟我說，我們一起處理 BTW。`;
+  } else if (newRev > KOR_LIMIT * 0.9) {
+    el.className = 'kor-check danger';
+    el.textContent = `⚠️ 此筆後年度 KOR 達 ${eur(newRev)}（${pct(newRev / KOR_LIMIT * 100)}），接近上限！`;
   } else {
-    el.className='kor-check ok';
-    el.textContent=`✅ 商業銷售：此筆後年度 KOR 達 ${eur(newRev)}（${pct(newRev/KOR_LIMIT*100)}），剩餘 ${eur(KOR_LIMIT-newRev)}。`;
+    el.className = 'kor-check ok';
+    el.textContent = `✅ 商業銷售：此筆後年度 KOR 達 ${eur(newRev)}（${pct(newRev / KOR_LIMIT * 100)}），剩餘 ${eur(KOR_LIMIT - newRev)}。`;
   }
 }
 
+q('btnAddSellLine')?.addEventListener('click', () => {
+  if (q('sellEditId')?.value) return;
+  addSellLine();
+});
+
 q('btnSaveSell').addEventListener('click', async ()=>{
-  const productId = q('sellProductId').value;
-  const qty   = parseInt(q('sellQty').value);
-  const price = parseFloat(q('sellPrice').value);
   const date  = q('sellDate').value;
   const editId = q('sellEditId').value;
-  if (!productId) return toast('請選擇商品','e');
-  if (!qty||qty<1) return toast('請輸入數量','e');
-  if (isNaN(price)||price<0) return toast('請輸入售價','e');
+  const lines = collectSellLines();
   if (!date) return toast('請選擇日期','e');
+  if (!lines.length) return toast('請至少新增一列','e');
+
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const n = i + 1;
+    if (!l.productId) return toast(`第 ${n} 列：請選擇商品`,'e');
+    if (!l.qty || l.qty < 1) return toast(`第 ${n} 列：請輸入數量`,'e');
+    if (isNaN(l.price) || l.price < 0) return toast(`第 ${n} 列：請輸入售價`,'e');
+  }
 
   let scopeVal = q('sellScope').value || 'biz';
   if (_sellScopeLock) scopeVal = _sellScopeLock;
-  const fee      = parseFloat(q('sellFee').value)||0;
 
-  const stock = Ledger.checkSellStock(productId, scopeVal, qty);
-  if (!stock.ok) return toast(`庫存不足！目前在庫 ${stock.avail} 張（${stock.scope==='priv'?'私人':'商業'}）`,'e');
+  const needByProduct = {};
+  for (const l of lines) {
+    needByProduct[l.productId] = (needByProduct[l.productId] || 0) + l.qty;
+  }
+  for (const [productId, need] of Object.entries(needByProduct)) {
+    const stock = Ledger.checkSellStock(productId, scopeVal, need);
+    if (!stock.ok) {
+      const p = DB.products.find(x => x.id === productId);
+      return toast(`庫存不足！${p?.name || ''} 目前在庫 ${stock.avail} 張（${stock.scope==='priv'?'私人':'商業'}）`,'e');
+    }
+  }
 
+  const revAdd = lines.reduce((s, l) => s + l.price * l.qty, 0);
   if (scopeVal === 'biz' || (editId && txScope(Ledger.findById(editId)) === 'biz')) {
-    const newRev = korRevenue(fiscalYear()) + price * qty;
+    const newRev = korRevenue(fiscalYear()) + revAdd;
     if (newRev > KOR_LIMIT) {
       const ok = await confirm2Async(`🚨 KOR 超限警告\n\n此筆銷售後年度營業額將達 ${eur(newRev)}，超過 €20,000 KOR 上限。\n\n超限後通常要開始收 BTW。確定仍要記錄這筆嗎？`, '仍要記錄');
       if (!ok) return;
     }
   }
 
-  const { ids } = Ledger.recordSell({
-    scopeInput: scopeVal,
-    editId: editId || null,
-    fee,
-    fields: {
-      productId,
-      date,
-      quantity: qty,
-      pricePerUnitEUR: price,
-      platform: q('sellPlatform').value||'',
-      note: q('sellNote').value.trim(),
-    },
-  });
+  const shared = {
+    date,
+    platform: q('sellPlatform').value||'',
+    note: q('sellNote').value.trim(),
+  };
+
+  const allIds = [];
+  let totalQty = 0;
+  if (editId) {
+    const l = lines[0];
+    const { ids } = Ledger.recordSell({
+      scopeInput: scopeVal,
+      editId,
+      fee: l.fee,
+      fields: {
+        productId: l.productId,
+        quantity: l.qty,
+        pricePerUnitEUR: l.price,
+        ...shared,
+      },
+    });
+    allIds.push(...ids);
+    totalQty = l.qty;
+  } else {
+    for (const l of lines) {
+      const { ids } = Ledger.recordSell({
+        scopeInput: scopeVal,
+        editId: null,
+        fee: l.fee,
+        fields: {
+          productId: l.productId,
+          quantity: l.qty,
+          pricePerUnitEUR: l.price,
+          ...shared,
+        },
+      });
+      allIds.push(...ids);
+      totalQty += l.qty;
+    }
+  }
 
   save();
-  proofCommitToIds('sell', ids).then(() => {
+  proofCommitToIds('sell', allIds).then(() => {
     closeModal('mSell');
     _sellScopeLock = null;
     updateKor();
     refreshCurrentView();
     const where = scopeVal === 'priv' ? '私人帳（不計 KOR）' : '商業帳（計入 KOR）';
-    toast(editId ? `銷售紀錄已更新（${where}）` : `銷售 × ${qty} 已記入${where}`, 's');
+    const lineN = lines.length;
+    toast(
+      editId
+        ? `銷售紀錄已更新（${where}）`
+        : (lineN > 1
+          ? `銷售 ${lineN} 筆 × ${totalQty} 張已記入${where}`
+          : `銷售 × ${totalQty} 已記入${where}`),
+      's'
+    );
   });
 });
 
@@ -5985,20 +6146,9 @@ function wireEvents() {
             : '此筆從商業庫存進入，只能記商業銷售', 'w');
         }
         updateSellScopeUI();
-        updateProfitPreview();
-        updateKorCheck();
-        // Refresh in-stock product list for selected scope
-        const scopeNow = sellFormScope();
-        const editId = q('sellEditId')?.value;
-        const editTx = editId ? Ledger.findById(editId) : null;
-        const inStock = DB.products.filter(p => getQty(p.id, scopeNow) > 0 || (editTx && p.id === editTx.productId));
-        const sel = q('sellProductId');
-        const cur = sel?.value;
-        if (sel) {
-          sel.innerHTML = '<option value="">— 選擇商品 —</option>' +
-            inStock.map(p => `<option value="${p.id}"${p.id === cur ? ' selected' : ''}>${esc(p.name)} (${p.type})</option>`).join('');
-        }
+        refreshSellLineProductOptions();
         updateSellCostPreview();
+        updateKorCheck();
       }
       if (targetId === 'buyScope' || targetId === 'pBuyScope') {
         // dual-cost UI already handled in setScopeValue
@@ -6104,10 +6254,6 @@ function wireEvents() {
   q('btnPrint')?.addEventListener('click', ()=>window.print());
 
   // Sell modal live updates
-  q('sellProductId').addEventListener('change', updateSellCostPreview);
-  q('sellQty').addEventListener('input', ()=>{ updateSellCostPreview(); updateKorCheck(); });
-  q('sellPrice').addEventListener('input', ()=>{ updateProfitPreview(); updateKorCheck(); });
-  q('sellFee').addEventListener('input', updateProfitPreview);
   q('sellCountry').addEventListener('change', ()=>{
     const v=q('sellCountry').value;
     q('ossAlert').style.display=(v!=='NL')?'block':'none';
