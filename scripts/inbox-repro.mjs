@@ -2,7 +2,7 @@
  * Inbox conversation + post gates. Run: node scripts/inbox-repro.mjs
  */
 import { newDraft, WAIT } from '../lib/constants.js';
-import { applyAnswer, nextQuestion, confirmSummary } from '../lib/conversation.js';
+import { applyAnswer, nextQuestion, confirmSummary, prepareFx } from '../lib/conversation.js';
 import { canPost, missingFields, needsBtw } from '../lib/completeness.js';
 import { postDraftToLedger } from '../lib/post.js';
 import { fetchEcbRate } from '../lib/fx.js';
@@ -24,13 +24,31 @@ async function run() {
     return null;
   };
 
-  // Expense happy path with confirm
-  let d = newDraft('d1');
+  // Date defaults to today — no DATE question
+  let d = newDraft('d0');
+  d.fields.kind = 'EXPENSE';
+  d.fields.scope = 'biz';
+  let q = nextQuestion(d, settings);
+  assert(d.fields.date === new Date().toISOString().slice(0, 10), 'date defaults today');
+  assert(q.waitingFor === WAIT.AMOUNT, 'skips date when defaulted');
+
+  // Receipt date different from today → ask once
+  d = newDraft('d0b');
+  d.fields.kind = 'EXPENSE';
+  d.fields.scope = 'biz';
+  d.guesses = { date: '2026-08-01' };
+  q = nextQuestion(d, settings);
+  assert(!d.fields.date, 'keeps date open when receipt differs');
+  assert(q.waitingFor === WAIT.DATE, 'asks receipt date');
+
+  // Expense happy path with confirm (date auto today; force pre-KOR date for BTW gate)
+  d = newDraft('d1');
   let r = await applyAnswer(d, '3', { settings, products, fxLookup });
   assert(d.fields.kind === 'EXPENSE', 'kind expense');
   r = await applyAnswer(d, '1', { settings, products, fxLookup });
   assert(d.fields.scope === 'biz', 'scope biz');
-  r = await applyAnswer(d, '2026-08-14', { settings, products, fxLookup });
+  assert(d.fields.date, 'date auto-filled');
+  d.fields.date = '2026-08-14'; // force pre-KOR for BTW test
   r = await applyAnswer(d, '€93.85', { settings, products, fxLookup });
   assert(d.fields.amountEur === 93.85, 'amount');
   r = await applyAnswer(d, '監視器', { settings, products, fxLookup });
@@ -56,12 +74,39 @@ async function run() {
 
   // Guess is not auto-fill: photo guess kind still asks
   d = newDraft('d2');
-  d.guesses = { kind: 'EXPENSE', amountEur: 12, currency: 'EUR' };
-  const q = nextQuestion(d, settings);
+  d.guesses = { kind: 'EXPENSE', amountEur: 12, currency: 'EUR', btwEur: 2.1 };
+  q = nextQuestion(d, settings);
   assert(q.waitingFor === WAIT.KIND, 'still asks kind');
   assert(q.text.includes('對嗎'), 'labeled guess');
   r = await applyAnswer(d, '對', { settings, products, fxLookup });
   assert(d.fields.kind === 'EXPENSE', 'accepted guess');
+
+  // Amount+BTW listed together; 「對」 takes both
+  d = newDraft('d2b');
+  d.fields.kind = 'EXPENSE';
+  d.fields.scope = 'biz';
+  d.fields.date = '2026-08-14';
+  d.guesses = { amountEur: 93.85, currency: 'EUR', btwEur: 16.29 };
+  d.waitingFor = WAIT.AMOUNT;
+  q = nextQuestion(d, settings);
+  assert(q.text.includes('93.85') && q.text.includes('16.29'), 'lists amount and btw');
+  r = await applyAnswer(d, '對', { settings, products, fxLookup });
+  assert(d.fields.amountEur === 93.85, 'amount from guess');
+  assert(d.fields.btwEur === 16.29 && d.fields.btwAnswered, 'btw from guess');
+
+  // USD: ECB shown on amount; 「對」 converts
+  d = newDraft('d2c');
+  d.fields.kind = 'EXPENSE';
+  d.fields.scope = 'priv';
+  d.fields.date = '2026-08-15';
+  d.guesses = { originalAmount: 100, currency: 'USD' };
+  d.fields.currency = 'USD';
+  d.waitingFor = WAIT.AMOUNT;
+  await prepareFx(d, fxLookup);
+  q = nextQuestion(d, settings);
+  assert(q.text.includes('ECB') && q.text.includes('92'), 'shows ECB convert');
+  r = await applyAnswer(d, '對', { settings, products, fxLookup });
+  assert(d.fields.amountEur === 92, 'converted on confirm');
 
   // TWD: ECB missing → no invented rate
   d = newDraft('d3');
