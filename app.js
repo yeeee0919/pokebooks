@@ -3077,6 +3077,25 @@ const SEEDED_EXPENSES = [
     receiptPath: 'documents/receipts/2026-08-14_Codima_000002932_Tapo-C225.png',
     note: 'KOR 開始前採購。進項 BTW €16.29 列入 2026 Q3 omzetbelasting（voorbelasting）。所得稅費用為未稅 €77.56。',
   },
+  {
+    id: 'exp-yatuo-315231',
+    date: '2026-08-14',
+    category: 'packaging',
+    amountEur: 65.63,
+    btwEur: 0,
+    amountInclEur: 65.63,
+    originalCurrency: 'TWD',
+    originalAmount: 2430,
+    fxRate: 0.027009,
+    fxDate: '2026-08-15',
+    desc: '美國→台灣轉運運費（收藏卡/海報 ×20 · 18 lbs）',
+    vendor: '亞拓國際有限公司',
+    invoiceNo: 'DP75798529',
+    paymentMethod: 'LinePay',
+    isPrivate: false,
+    receiptPath: 'documents/receipts/2026-08-14_Yatuo_DP75798529_invoice.png',
+    note: '訂單 315231 · 轉運單 907818987385 · 黑貓宅急便。NT$2,430 ÷ 匯率 0.027009 ≈ €65.63。台灣電子發票，荷蘭不可扣進項 BTW，全額入 IB 營業費用。',
+  },
 ];
 
 const SEEDED_DOCUMENTS = [
@@ -3090,6 +3109,17 @@ const SEEDED_DOCUMENTS = [
     amountExclEur: 77.56,
     btwEur: 16.29,
     amountInclEur: 93.85,
+  },
+  {
+    id: 'doc-yatuo-315231',
+    type: DOC_TYPE_EXPENSE_RECEIPT,
+    title: '亞拓 訂單 315231 — 美國→台灣轉運運費',
+    expenseId: 'exp-yatuo-315231',
+    date: '2026-08-14',
+    path: 'documents/receipts/2026-08-14_Yatuo_DP75798529_invoice.png',
+    amountExclEur: 65.63,
+    btwEur: 0,
+    amountInclEur: 65.63,
   },
 ];
 
