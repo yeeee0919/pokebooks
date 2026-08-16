@@ -109,6 +109,41 @@
           </div>
         </div>
 
+        <div class="cf-card" id="cashFlowCard">
+          <div class="cf-hd">
+            <div class="cf-hd-ico" aria-hidden="true">💳</div>
+            <div>
+              <div class="cf-title">財務現金流對比</div>
+              <div class="cf-sub">Cash Flow Dynamics</div>
+            </div>
+          </div>
+          <div class="cf-filters">
+            <div class="pill-tabs cf-range-tabs" id="cfRangeTabs" role="tablist" aria-label="時間範圍">
+              <button type="button" class="pill-btn active" data-cf-range="month">本月</button>
+              <button type="button" class="pill-btn" data-cf-range="year">本年</button>
+              <button type="button" class="pill-btn" data-cf-range="30d">30D</button>
+              <button type="button" class="pill-btn" data-cf-range="all">全部</button>
+            </div>
+            <div class="cf-scope-chips" id="cfScopeChips" role="tablist" aria-label="帳戶範圍">
+              <button type="button" class="cf-chip active" data-cf-scope="all">全部</button>
+              <button type="button" class="cf-chip" data-cf-scope="priv">私人</button>
+              <button type="button" class="cf-chip" data-cf-scope="biz">商務</button>
+            </div>
+          </div>
+          <div class="cf-boxes">
+            <button type="button" class="cf-box out" id="cfBoxOut" data-cf-side="out">
+              <div class="cf-box-top"><span class="cf-arrow out" aria-hidden="true">↘</span><span class="cf-box-label">支出</span></div>
+              <div class="cf-box-val" id="cfOutVal">€0</div>
+            </button>
+            <button type="button" class="cf-box in" id="cfBoxIn" data-cf-side="in">
+              <div class="cf-box-top"><span class="cf-arrow in" aria-hidden="true">↗</span><span class="cf-box-label">收入</span></div>
+              <div class="cf-box-val" id="cfInVal">€0</div>
+            </button>
+          </div>
+          <p class="cf-hint">點擊方塊查看資金組成明細</p>
+          <div class="cf-detail" id="cfDetail" hidden></div>
+        </div>
+
         <div class="stat-row">
           <div class="stat-box"><div class="stat-ico">📦</div><div><p class="sl">在庫張數</p><p class="sv" id="dTotalQty">0</p><p class="ss" id="dTotalCost">帳面成本 €0</p></div></div>
           <div class="stat-box"><div class="stat-ico">💹</div><div><p class="sl">本年毛利</p><p class="sv" id="dGP">€0</p><p class="ss" id="dGPM">毛利率 —</p></div></div>

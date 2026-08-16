@@ -3503,6 +3503,154 @@ function renderDashboard() {
       <div class="dl-days ${days<30?'warn':''}">${txt}　${esc(d.short || d.desc)}</div>
     </div>`;
   }).join('') : '<p class="empty-sm">本稅年截止日已過，可切換稅年查看下一年度。</p>';
+
+  renderCashFlowCard();
+}
+
+// ── Cash flow card (dashboard) ────────────────────────────────
+let _cfRange = 'month'; // month | year | 30d | all
+let _cfScope = 'all';   // all | priv | biz
+let _cfDetailSide = null; // null | 'in' | 'out'
+
+function cashFlowDateInRange(dateStr, range = _cfRange) {
+  if (!dateStr) return false;
+  const d = String(dateStr).slice(0, 10);
+  if (range === 'all') return true;
+  if (range === 'year') return inYear(d, fiscalYear());
+  if (range === 'month') {
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return d.startsWith(ym);
+  }
+  if (range === '30d') {
+    const from = new Date();
+    from.setDate(from.getDate() - 30);
+    const fromStr = from.toISOString().slice(0, 10);
+    return d >= fromStr && d <= today();
+  }
+  return true;
+}
+
+function cashFlowMatchesScope(item, kind, scope = _cfScope) {
+  if (scope === 'all') return true;
+  if (kind === 'expense') {
+    return scope === 'priv' ? !!item.isPrivate : !item.isPrivate;
+  }
+  return txScope(item) === scope;
+}
+
+function computeCashFlow(range = _cfRange, scope = _cfScope) {
+  const sells = DB.transactions.filter(t =>
+    t.type === 'SELL' && cashFlowDateInRange(t.date, range) && cashFlowMatchesScope(t, 'tx', scope)
+  );
+  const buys = DB.transactions.filter(t =>
+    t.type === 'BUY' && cashFlowDateInRange(t.date, range) && cashFlowMatchesScope(t, 'tx', scope)
+  );
+  const exps = (DB.expenses || []).filter(e =>
+    cashFlowDateInRange(e.date, range) && cashFlowMatchesScope(e, 'expense', scope)
+  );
+
+  const sellRows = sells.map(t => {
+    const p = DB.products.find(x => x.id === t.productId);
+    const amt = (t.quantity || 0) * (t.pricePerUnitEUR || 0);
+    return { date: t.date, label: p?.name || '已刪除', amt, kind: 'SELL', fee: t.fee || 0 };
+  });
+  const buyRows = buys.map(t => {
+    const p = DB.products.find(x => x.id === t.productId);
+    const amt = (t.quantity || 0) * (t.pricePerUnitEUR || 0);
+    return { date: t.date, label: p?.name || '已刪除', amt, kind: 'BUY' };
+  });
+  const expRows = exps.map(e => ({
+    date: e.date,
+    label: e.desc || e.category || '費用',
+    amt: expenseNetEur(e),
+    kind: 'EXPENSE',
+  }));
+
+  const income = sellRows.reduce((s, r) => s + r.amt, 0);
+  const buyOut = buyRows.reduce((s, r) => s + r.amt, 0);
+  const expOut = expRows.reduce((s, r) => s + r.amt, 0);
+  const feeOut = sellRows.reduce((s, r) => s + r.fee, 0);
+
+  return {
+    income,
+    expense: buyOut + expOut + feeOut,
+    buyOut,
+    expOut,
+    feeOut,
+    sellRows,
+    buyRows,
+    expRows,
+  };
+}
+
+function renderCashFlowDetail(side, data) {
+  const el = q('cfDetail');
+  if (!el) return;
+  if (!side) {
+    el.hidden = true;
+    el.innerHTML = '';
+    q('cfBoxOut')?.classList.remove('active');
+    q('cfBoxIn')?.classList.remove('active');
+    return;
+  }
+  q('cfBoxOut')?.classList.toggle('active', side === 'out');
+  q('cfBoxIn')?.classList.toggle('active', side === 'in');
+
+  let rows = [];
+  if (side === 'in') {
+    rows = data.sellRows.map(r => ({
+      date: r.date,
+      name: r.label,
+      tag: '銷售',
+      amt: r.amt,
+    }));
+  } else {
+    rows = [
+      ...data.buyRows.map(r => ({ date: r.date, name: r.label, tag: '進貨', amt: r.amt })),
+      ...data.expRows.map(r => ({ date: r.date, name: r.label, tag: '費用', amt: r.amt })),
+      ...data.sellRows.filter(r => r.fee > 0).map(r => ({
+        date: r.date,
+        name: `${r.label}（手續費）`,
+        tag: '手續費',
+        amt: r.fee,
+      })),
+    ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  }
+
+  const title = side === 'in' ? '收入明細' : '支出明細';
+  const total = side === 'in' ? data.income : data.expense;
+  el.hidden = false;
+  if (!rows.length) {
+    el.innerHTML = `<div class="cf-detail-hd">${title}</div><p class="empty-sm">此篩選尚無資料</p>`;
+    return;
+  }
+  el.innerHTML = `<div class="cf-detail-hd"><span>${title}</span><span>${eur(total)}</span></div>` +
+    `<div class="cf-detail-list">${rows.slice(0, 40).map(r => `
+      <div class="cf-detail-row">
+        <span class="cf-detail-date">${esc(r.date)}</span>
+        <span class="cf-detail-tag">${esc(r.tag)}</span>
+        <span class="cf-detail-name">${esc(r.name)}</span>
+        <span class="cf-detail-amt ${side === 'out' ? 'neg' : 'pos'}">${eur(r.amt)}</span>
+      </div>`).join('')}</div>` +
+    (rows.length > 40 ? `<p class="cf-detail-more">僅顯示前 40 筆</p>` : '');
+}
+
+function renderCashFlowCard() {
+  if (!q('cashFlowCard')) return;
+  const data = computeCashFlow();
+  q('cfOutVal').textContent = eur(data.expense, 0);
+  q('cfInVal').textContent = eur(data.income, 0);
+
+  document.querySelectorAll('#cfRangeTabs .pill-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.cfRange === _cfRange);
+  });
+  document.querySelectorAll('#cfScopeChips .cf-chip').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.cfScope === _cfScope);
+  });
+
+  if (_cfDetailSide) renderCashFlowDetail(_cfDetailSide, data);
+  else renderCashFlowDetail(null, data);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -6130,6 +6278,29 @@ function wireEvents() {
   q('btnLogout')?.addEventListener('click', doLogout);
   q('btnTgPair')?.addEventListener('click', doTelegramPair);
   q('btnInboxReload')?.addEventListener('click', () => renderInbox());
+
+  document.querySelectorAll('#cfRangeTabs .pill-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _cfRange = btn.dataset.cfRange || 'month';
+      _cfDetailSide = null;
+      renderCashFlowCard();
+    });
+  });
+  document.querySelectorAll('#cfScopeChips .cf-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _cfScope = btn.dataset.cfScope || 'all';
+      _cfDetailSide = null;
+      renderCashFlowCard();
+    });
+  });
+  q('cfBoxOut')?.addEventListener('click', () => {
+    _cfDetailSide = _cfDetailSide === 'out' ? null : 'out';
+    renderCashFlowCard();
+  });
+  q('cfBoxIn')?.addEventListener('click', () => {
+    _cfDetailSide = _cfDetailSide === 'in' ? null : 'in';
+    renderCashFlowCard();
+  });
 
   // Scope Button Groups toggle
   document.querySelectorAll('.scope-btn').forEach(btn => {
