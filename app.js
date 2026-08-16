@@ -3825,10 +3825,71 @@ function calculateProductMetrics(productId, scopeF = 'all') {
 
 let _invTypeFilters = { biz: '', priv: '' };
 
+/**
+ * Build inventory tree roots + children.
+ * - Type filter: matching children whose parent is not in the set are promoted to roots
+ *   (fixes empty「鑑定卡」filter when graded cards only have parentId).
+ * - Search/lang: parents of matches are pulled in so nesting still works.
+ */
+function buildInventoryRoots({ products, typeFilter = '', search = '', langF = '' }) {
+  let matched = products;
+  if (search) {
+    const qstr = search.toLowerCase();
+    matched = matched.filter(p =>
+      (p.name || '').toLowerCase().includes(qstr) || (p.notes || '').toLowerCase().includes(qstr)
+    );
+  }
+  if (langF) matched = matched.filter(p => p.language === langF);
+
+  const byId = new Map(products.map(p => [p.id, p]));
+
+  if (!typeFilter) {
+    const withParents = new Map(matched.map(p => [p.id, p]));
+    matched.forEach(p => {
+      if (p.parentId && byId.has(p.parentId) && !withParents.has(p.parentId)) {
+        withParents.set(p.parentId, byId.get(p.parentId));
+      }
+    });
+    matched = [...withParents.values()];
+  } else {
+    matched = matched.filter(p => p.type === typeFilter);
+  }
+
+  const matchedIds = new Set(matched.map(p => p.id));
+  const roots = [];
+  const childrenMap = new Map();
+
+  matched.forEach(p => {
+    if (!p.parentId) {
+      roots.push(p);
+      return;
+    }
+    if (matchedIds.has(p.parentId)) {
+      if (!childrenMap.has(p.parentId)) childrenMap.set(p.parentId, []);
+      childrenMap.get(p.parentId).push(p);
+    } else {
+      roots.push(p);
+    }
+  });
+
+  return { roots, childrenMap, visible: matched };
+}
+
+function inventoryRowIsActive(m, childrenMetrics, statusF) {
+  if (!m) return false;
+  const parentHasAct = (m.totalBuyQty > 0 || m.totalSellQty > 0 || m.remainQty > 0);
+  const childHasAct = childrenMetrics.some(cm => cm.totalBuyQty > 0 || cm.totalSellQty > 0 || cm.remainQty > 0);
+  if (statusF === 'instock') {
+    return (m.remainQty > 0) || childrenMetrics.some(cm => cm.remainQty > 0);
+  }
+  return parentHasAct || childHasAct;
+}
+
 function renderInventoryPage(scopeF = 'biz') {
   const search  = (q(`invSearch-${scopeF}`)?.value || '').toLowerCase();
   const langF   = q(`invLangFilter-${scopeF}`)?.value || '';
   const statusF = q(`invStatusFilter-${scopeF}`)?.value || 'all';
+  const typeF   = _invTypeFilters[scopeF] || '';
 
   // Wire Pill buttons for this scope
   const pills = q(`invTypePills-${scopeF}`);
@@ -3843,37 +3904,22 @@ function renderInventoryPage(scopeF = 'biz') {
     });
   }
 
-  let products = DB.products;
-  if (search)                  products = products.filter(p => p.name.toLowerCase().includes(search) || (p.notes||'').toLowerCase().includes(search));
-  if (_invTypeFilters[scopeF]) products = products.filter(p => p.type === _invTypeFilters[scopeF]);
-  if (langF)                   products = products.filter(p => p.language === langF);
-
-  // Separate parent (raw cards / standalone) and children (graded cards)
-  const parents = products.filter(p => !p.parentId);
-  const childrenMap = new Map();
-  products.filter(p => p.parentId).forEach(ch => {
-    if (!childrenMap.has(ch.parentId)) childrenMap.set(ch.parentId, []);
-    childrenMap.get(ch.parentId).push(ch);
+  const { roots, childrenMap, visible } = buildInventoryRoots({
+    products: DB.products,
+    typeFilter: typeF,
+    search,
+    langF,
   });
 
-  // Filter parents to only those with activity/inventory in this scope
-  const activeParents = parents.filter(p => {
+  const activeParents = roots.filter(p => {
     const m = calculateProductMetrics(p.id, scopeF);
-    if (!m) return false;
     const children = childrenMap.get(p.id) || [];
     const childrenMetrics = children.map(ch => calculateProductMetrics(ch.id, scopeF)).filter(Boolean);
-
-    const parentHasAct = (m.totalBuyQty > 0 || m.totalSellQty > 0 || m.remainQty > 0);
-    const childHasAct  = childrenMetrics.some(cm => cm.totalBuyQty > 0 || cm.totalSellQty > 0 || cm.remainQty > 0);
-
-    if (statusF === 'instock') {
-      return (m.remainQty > 0) || childrenMetrics.some(cm => cm.remainQty > 0);
-    }
-    return parentHasAct || childHasAct;
+    return inventoryRowIsActive(m, childrenMetrics, statusF);
   });
 
-  // Calculate summary meta
-  const allMetrics = products.map(p => calculateProductMetrics(p.id, scopeF)).filter(Boolean);
+  // Calculate summary meta from visible (filter-matched) products only
+  const allMetrics = visible.map(p => calculateProductMetrics(p.id, scopeF)).filter(Boolean);
   const inStockCount = allMetrics.filter(m => m.remainQty > 0).length;
   const totalQtyAll  = allMetrics.reduce((s,m) => s + m.remainQty, 0);
   const totalCostAll = allMetrics.reduce((s,m) => s + m.totalInvestment, 0);
@@ -3905,14 +3951,16 @@ function renderInventoryPage(scopeF = 'biz') {
     const children = childrenMap.get(p.id) || [];
     const hasChildren = children.length > 0;
     const isCollapsed = _collapsedParents.has(p.id);
+    // Promoted graded cards (type filter) keep parentId but render as root rows
+    const isPromotedChild = !!p.parentId && !hasChildren;
 
     const changeSign = m.priceChangePct >= 0 ? '+' : '';
     const changeCls  = m.priceChangePct >= 0 ? 'badge-pos' : 'badge-neg';
     const profitSign = m.realizedProfit > 0 ? '+' : '';
     const profitCls  = m.realizedProfit > 0 ? 'badge-pos' : m.realizedProfit < 0 ? 'badge-neg' : 'badge-flat';
 
-    rowsHtml += `<tr class="parent-row" data-id="${p.id}">
-      <td class="col-name">
+    rowsHtml += `<tr class="${isPromotedChild ? 'child-row' : 'parent-row'}" data-id="${p.id}">
+      <td class="col-name${isPromotedChild ? ' tree-child-cell' : ''}">
         <div class="tree-name-cell">
           ${hasChildren
             ? `<button type="button" class="tree-toggle-btn${isCollapsed ? ' collapsed' : ''}" data-toggle="${p.id}" aria-label="${isCollapsed ? '展開' : '收合'}"><span class="chevron"></span></button>`

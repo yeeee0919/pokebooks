@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node scripts/inbox-repro.mjs && node scripts/scope-isolation-repro.mjs && node scripts/sell-scope-lock-repro.mjs && node scripts/multi-sell-repro.mjs"
+    "test": "node scripts/inbox-repro.mjs && node scripts/scope-isolation-repro.mjs && node scripts/sell-scope-lock-repro.mjs && node scripts/multi-sell-repro.mjs && node scripts/inv-type-filter-repro.mjs"
   },
   "dependencies": {
     "postgres": "^3.4.9"
