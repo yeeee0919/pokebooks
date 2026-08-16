@@ -585,6 +585,35 @@ input, select { font-family: var(--font); }
 .inv-table th.col-gold { color: var(--t3); font-weight: 700; }
 .inv-table th.col-gold { text-align: right; }
 
+.inv-sort-th { padding: 0 !important; vertical-align: middle; }
+.inv-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .2rem;
+  width: 100%;
+  padding: .55rem .55rem;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.inv-sort-th.col-num .inv-sort-btn { justify-content: flex-end; }
+.inv-sort-arrow {
+  font-size: .72rem;
+  opacity: .45;
+  line-height: 1;
+}
+.inv-sort-th.is-desc .inv-sort-arrow,
+.inv-sort-th.is-asc .inv-sort-arrow {
+  opacity: 1;
+  color: var(--gold);
+}
+.inv-sort-btn:hover .inv-sort-arrow { opacity: .85; }
+
 .tree-name-cell {
   display: flex; align-items: center; gap: .55rem; min-width: 0;
 }

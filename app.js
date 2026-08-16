@@ -3824,6 +3824,49 @@ function calculateProductMetrics(productId, scopeF = 'all') {
 }
 
 let _invTypeFilters = { biz: '', priv: '' };
+// Inventory column sort: key = remainQty | priceChangePct | totalInvestment | totalMarketVal
+// dir = 'desc' (高→低) | 'asc' (低→高) | null (取消)
+let _invSort = {
+  biz:  { key: null, dir: null },
+  priv: { key: null, dir: null },
+};
+
+function cycleInvSort(scopeF, key) {
+  const cur = _invSort[scopeF] || { key: null, dir: null };
+  if (cur.key !== key) {
+    _invSort[scopeF] = { key, dir: 'desc' };
+    return;
+  }
+  if (cur.dir === 'desc') _invSort[scopeF] = { key, dir: 'asc' };
+  else _invSort[scopeF] = { key: null, dir: null };
+}
+
+function invSortTh(scopeF, key, label, cls) {
+  const cur = _invSort[scopeF] || { key: null, dir: null };
+  const on = cur.key === key && cur.dir;
+  const arrow = !on ? '↕' : (cur.dir === 'desc' ? '↓' : '↑');
+  const state = !on ? '' : ` is-${cur.dir}`;
+  const tip = !on ? '點擊：高→低' : (cur.dir === 'desc' ? '目前高→低，再點：低→高' : '目前低→高，再點：取消排序');
+  return `<th class="${cls} inv-sort-th${state}">` +
+    `<button type="button" class="inv-sort-btn" data-inv-sort="${key}" title="${tip}">` +
+    `<span>${label}</span><span class="inv-sort-arrow" aria-hidden="true">${arrow}</span>` +
+    `</button></th>`;
+}
+
+function sortInventoryRoots(roots, scopeF) {
+  const cur = _invSort[scopeF] || { key: null, dir: null };
+  if (!cur.key || !cur.dir) return roots;
+  const dir = cur.dir === 'asc' ? 1 : -1;
+  const key = cur.key;
+  return [...roots].sort((a, b) => {
+    const ma = calculateProductMetrics(a.id, scopeF);
+    const mb = calculateProductMetrics(b.id, scopeF);
+    const va = Number(ma?.[key] ?? 0);
+    const vb = Number(mb?.[key] ?? 0);
+    if (va === vb) return (a.name || '').localeCompare(b.name || '', 'zh-Hant');
+    return va < vb ? -dir : dir;
+  });
+}
 
 /**
  * Build inventory tree roots + children.
@@ -3911,12 +3954,15 @@ function renderInventoryPage(scopeF = 'biz') {
     langF,
   });
 
-  const activeParents = roots.filter(p => {
-    const m = calculateProductMetrics(p.id, scopeF);
-    const children = childrenMap.get(p.id) || [];
-    const childrenMetrics = children.map(ch => calculateProductMetrics(ch.id, scopeF)).filter(Boolean);
-    return inventoryRowIsActive(m, childrenMetrics, statusF);
-  });
+  const activeParents = sortInventoryRoots(
+    roots.filter(p => {
+      const m = calculateProductMetrics(p.id, scopeF);
+      const children = childrenMap.get(p.id) || [];
+      const childrenMetrics = children.map(ch => calculateProductMetrics(ch.id, scopeF)).filter(Boolean);
+      return inventoryRowIsActive(m, childrenMetrics, statusF);
+    }),
+    scopeF
+  );
 
   // Calculate summary meta from visible (filter-matched) products only
   const allMetrics = visible.map(p => calculateProductMetrics(p.id, scopeF)).filter(Boolean);
@@ -4022,17 +4068,25 @@ function renderInventoryPage(scopeF = 'biz') {
       <th class="col-name">項目名稱</th>
       <th class="col-num">購入</th>
       <th class="col-num">售出</th>
-      <th class="col-num">剩餘</th>
+      ${invSortTh(scopeF, 'remainQty', '剩餘', 'col-num')}
       <th class="col-num">均進價</th>
       <th class="col-num">市值/張 <span class="col-hint" title="管理用參考價，點數字可編輯；商業/私人共用，不影響銷售">ⓘ</span></th>
-      <th class="col-num">漲跌幅</th>
-      <th class="col-num">總投入</th>
+      ${invSortTh(scopeF, 'priceChangePct', '漲跌幅', 'col-num')}
+      ${invSortTh(scopeF, 'totalInvestment', '總投入', 'col-num')}
       <th class="col-num">已實現利潤</th>
       <th class="col-center">回本進度</th>
-      <th class="col-gold">現貨市值</th>
+      ${invSortTh(scopeF, 'totalMarketVal', '現貨市值', 'col-gold')}
     </tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>`;
+
+  wrap.querySelectorAll('[data-inv-sort]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      cycleInvSort(scopeF, btn.dataset.invSort);
+      renderInventoryPage(scopeF);
+    });
+  });
 
   // Wire tree toggle
   wrap.querySelectorAll('.tree-toggle-btn').forEach(btn => {
