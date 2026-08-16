@@ -480,6 +480,28 @@ input, select { font-family: var(--font); }
 }
 .tl { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 .tr { display: flex; gap: .5rem; align-items: center; }
+
+.inv-fx {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  flex-wrap: wrap;
+}
+.inv-fx-tabs { flex-shrink: 0; }
+.inv-fx-rate {
+  border: 1px dashed var(--b2);
+  background: var(--s2);
+  color: var(--t3);
+  border-radius: 999px;
+  padding: .28rem .65rem;
+  font-size: .68rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.inv-fx-rate:hover {
+  color: var(--t1);
+  border-color: var(--t3);
+}
 .search-box, .sel {
   background: var(--s1); border: 1px solid var(--b1);
   color: var(--t1); border-radius: var(--r1);

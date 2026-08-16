@@ -3295,6 +3295,112 @@ function eur(n, dec=2) {
   const v = Number(n||0);
   return '€' + v.toLocaleString('nl-NL',{minimumFractionDigits:dec,maximumFractionDigits:dec});
 }
+
+// Inventory display FX (EUR is source of truth; TWD is display-only)
+const INV_FX_CCY_KEY = 'pokeledger_inv_display_currency';
+const INV_FX_RATE_KEY = 'pokeledger_inv_twd_per_eur';
+let _invDisplayCurrency = localStorage.getItem(INV_FX_CCY_KEY) === 'TWD' ? 'TWD' : 'EUR';
+let _invTwdPerEur = (() => {
+  const n = Number(localStorage.getItem(INV_FX_RATE_KEY));
+  return n > 0 ? n : null;
+})();
+let _invTwdRateMeta = { date: null, source: _invTwdPerEur ? 'saved' : null };
+let _invFxFetchPromise = null;
+
+function invMoney(n, dec = 2) {
+  const v = Number(n || 0);
+  if (_invDisplayCurrency !== 'TWD') return eur(v, dec);
+  const rate = _invTwdPerEur || 0;
+  const twd = v * rate;
+  const digits = dec === 0 ? 0 : (Math.abs(twd) >= 100 ? 0 : dec);
+  return 'NT$' + twd.toLocaleString('zh-TW', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function syncInvFxControls() {
+  document.querySelectorAll('[data-inv-fx]').forEach(box => {
+    box.querySelectorAll('[data-inv-ccy]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.invCcy === _invDisplayCurrency);
+    });
+    const rateBtn = box.querySelector('[data-inv-fx-rate]');
+    if (!rateBtn) return;
+    if (_invDisplayCurrency === 'EUR') {
+      rateBtn.hidden = true;
+      return;
+    }
+    rateBtn.hidden = false;
+    if (!_invTwdPerEur) {
+      rateBtn.textContent = '匯率載入中…';
+      return;
+    }
+    const rateLabel = _invTwdPerEur.toLocaleString('zh-TW', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const src = _invTwdRateMeta.source === 'manual' ? '自訂'
+      : (_invTwdRateMeta.source === 'fallback' ? '備援'
+        : (_invTwdRateMeta.date || '參考'));
+    rateBtn.textContent = `1 € ≈ NT$${rateLabel}（${src}）`;
+  });
+}
+
+async function ensureInvTwdRate(force = false) {
+  if (!force && _invTwdPerEur > 0 && _invTwdRateMeta.source !== 'fallback') {
+    return _invTwdPerEur;
+  }
+  if (_invFxFetchPromise && !force) return _invFxFetchPromise;
+  _invFxFetchPromise = (async () => {
+    try {
+      const res = await fetch('https://api.exchangerate.fun/latest?base=EUR');
+      if (!res.ok) throw new Error('fx http ' + res.status);
+      const data = await res.json();
+      const rate = Number(data?.rates?.TWD);
+      if (!(rate > 0)) throw new Error('no TWD');
+      _invTwdPerEur = rate;
+      _invTwdRateMeta = { date: data.date || today(), source: 'api' };
+      localStorage.setItem(INV_FX_RATE_KEY, String(rate));
+      return rate;
+    } catch (e) {
+      if (!(_invTwdPerEur > 0)) {
+        _invTwdPerEur = 36.5;
+        _invTwdRateMeta = { date: today(), source: 'fallback' };
+      }
+      return _invTwdPerEur;
+    } finally {
+      _invFxFetchPromise = null;
+      syncInvFxControls();
+    }
+  })();
+  return _invFxFetchPromise;
+}
+
+async function setInvDisplayCurrency(ccy) {
+  _invDisplayCurrency = ccy === 'TWD' ? 'TWD' : 'EUR';
+  localStorage.setItem(INV_FX_CCY_KEY, _invDisplayCurrency);
+  syncInvFxControls();
+  if (_invDisplayCurrency === 'TWD') await ensureInvTwdRate();
+  const tab = currentTab();
+  if (tab === 'inventory-biz') renderInventoryPage('biz');
+  else if (tab === 'inventory-priv') renderInventoryPage('priv');
+}
+
+function editInvTwdRate() {
+  const cur = _invTwdPerEur > 0 ? String(_invTwdPerEur) : '36.5';
+  const raw = prompt('顯示用匯率：1 歐元 = ? 新台幣\n（僅影響庫存頁顯示，不會改寫帳本）', cur);
+  if (raw == null) return;
+  const n = Number(String(raw).replace(/,/g, '').trim());
+  if (!(n > 0)) return toast('請輸入有效匯率', 'e');
+  _invTwdPerEur = n;
+  _invTwdRateMeta = { date: today(), source: 'manual' };
+  localStorage.setItem(INV_FX_RATE_KEY, String(n));
+  syncInvFxControls();
+  const tab = currentTab();
+  if (tab === 'inventory-biz') renderInventoryPage('biz');
+  else if (tab === 'inventory-priv') renderInventoryPage('priv');
+  toast('已更新顯示匯率（帳本仍以歐元為準）', 's');
+}
 function pct(n) { return Number(n||0).toFixed(1)+'%'; }
 function today() { return new Date().toISOString().slice(0,10); }
 function fiscalYear() { return Number(DB.settings.fiscalYear || 2026); }
@@ -3701,10 +3807,10 @@ function calculateProductMetrics(productId, scopeF = 'all') {
     breakEvenCls  = 'badge-payback';
   } else if (marketPrice > 0 && netInvested > 0) {
     const needQty = Math.ceil(netInvested / marketPrice);
-    breakEvenText = `${eur(netInvested, 0)} (${needQty} 張)`;
+    breakEvenText = `${invMoney(netInvested, 0)} (${needQty} 張)`;
     breakEvenCls  = 'badge-neg';
   } else {
-    breakEvenText = eur(Math.max(0, netInvested), 0);
+    breakEvenText = invMoney(Math.max(0, netInvested), 0);
     breakEvenCls  = 'badge-flat';
   }
 
@@ -3774,7 +3880,11 @@ function renderInventoryPage(scopeF = 'biz') {
   const totalMktAll  = allMetrics.reduce((s,m) => s + m.totalMarketVal, 0);
 
   const scopeLabel = scopeF==='biz'?'🏢 商業帳戶':'👤 私人帳戶';
-  q(`invMeta-${scopeF}`).innerHTML = `[${scopeLabel}] 在庫商品 <strong>${inStockCount}</strong> 種 · 共 <strong>${totalQtyAll}</strong> 張 · 總投入成本 <strong>${eur(totalCostAll)}</strong> · 現貨總市值 <strong>${eur(totalMktAll)}</strong>`;
+  const ccyNote = _invDisplayCurrency === 'TWD'
+    ? ` · 顯示 NT$（1 € ≈ ${_invTwdPerEur ? _invTwdPerEur.toFixed(2) : '—'}，帳本仍為歐元）`
+    : '';
+  q(`invMeta-${scopeF}`).innerHTML = `[${scopeLabel}] 在庫商品 <strong>${inStockCount}</strong> 種 · 共 <strong>${totalQtyAll}</strong> 張 · 總投入成本 <strong>${invMoney(totalCostAll)}</strong> · 現貨總市值 <strong>${invMoney(totalMktAll)}</strong>${ccyNote}`;
+  syncInvFxControls();
 
   const wrap = q(`invTableWrap-${scopeF}`);
   if (!activeParents.length) {
@@ -3814,13 +3924,13 @@ function renderInventoryPage(scopeF = 'biz') {
       <td class="col-num">${m.totalBuyQty || '—'}</td>
       <td class="col-num">${m.totalSellQty || '—'}</td>
       <td class="col-num-strong">${m.remainQty}</td>
-      <td class="col-num-muted">${m.wacc > 0 ? eur(m.wacc) : '—'}</td>
+      <td class="col-num-muted">${m.wacc > 0 ? invMoney(m.wacc) : '—'}</td>
       <td class="mkt-cell">${marketPriceCellHtml(p.id, m.marketPrice)}</td>
       <td class="col-num ${changeCls}">${m.wacc > 0 && m.marketPrice > 0 ? changeSign + m.priceChangePct.toFixed(1) + '%' : '—'}</td>
-      <td class="col-num">${m.totalInvestment > 0 ? eur(m.totalInvestment) : '€0'}</td>
-      <td class="col-num ${profitCls}">${m.realizedProfit !== 0 ? profitSign + eur(m.realizedProfit) : '€0'}</td>
+      <td class="col-num">${m.totalInvestment > 0 ? invMoney(m.totalInvestment) : invMoney(0)}</td>
+      <td class="col-num ${profitCls}">${m.realizedProfit !== 0 ? profitSign + invMoney(m.realizedProfit) : invMoney(0)}</td>
       <td class="col-center ${m.breakEvenCls}">${m.breakEvenText}</td>
-      <td class="col-gold">${m.totalMarketVal > 0 ? eur(m.totalMarketVal) : '€0'}</td>
+      <td class="col-gold">${m.totalMarketVal > 0 ? invMoney(m.totalMarketVal) : invMoney(0)}</td>
     </tr>`;
 
     // Render children if not collapsed
@@ -3847,13 +3957,13 @@ function renderInventoryPage(scopeF = 'biz') {
           <td class="col-num">${cm.totalBuyQty || '—'}</td>
           <td class="col-num">${cm.totalSellQty || '—'}</td>
           <td class="col-num-strong">${cm.remainQty}</td>
-          <td class="col-num-muted">${cm.wacc > 0 ? eur(cm.wacc) : '—'}</td>
+          <td class="col-num-muted">${cm.wacc > 0 ? invMoney(cm.wacc) : '—'}</td>
           <td class="mkt-cell">${marketPriceCellHtml(ch.id, cm.marketPrice)}</td>
           <td class="col-num ${cChangeCls}">${cm.wacc > 0 && cm.marketPrice > 0 ? cChangeSign + cm.priceChangePct.toFixed(1) + '%' : '—'}</td>
-          <td class="col-num">${cm.totalInvestment > 0 ? eur(cm.totalInvestment) : '€0'}</td>
-          <td class="col-num ${cProfitCls}">${cm.realizedProfit !== 0 ? cProfitSign + eur(cm.realizedProfit) : '€0'}</td>
+          <td class="col-num">${cm.totalInvestment > 0 ? invMoney(cm.totalInvestment) : invMoney(0)}</td>
+          <td class="col-num ${cProfitCls}">${cm.realizedProfit !== 0 ? cProfitSign + invMoney(cm.realizedProfit) : invMoney(0)}</td>
           <td class="col-center ${cm.breakEvenCls}">${cm.breakEvenText}</td>
-          <td class="col-gold">${cm.totalMarketVal > 0 ? eur(cm.totalMarketVal) : '€0'}</td>
+          <td class="col-gold">${cm.totalMarketVal > 0 ? invMoney(cm.totalMarketVal) : invMoney(0)}</td>
         </tr>`;
       });
     }
@@ -3896,9 +4006,12 @@ function renderInventoryPage(scopeF = 'biz') {
 }
 
 function marketPriceCellHtml(productId, price) {
-  const label = price > 0 ? eur(price) : '—';
+  const label = price > 0 ? invMoney(price) : '—';
   const emptyCls = price > 0 ? '' : ' empty';
-  return `<button type="button" class="mkt-edit-btn${emptyCls}" data-mkt-id="${productId}" title="點擊調整市值（管理用，不影響銷售）">${label}</button>`;
+  const tip = _invDisplayCurrency === 'TWD'
+    ? '點擊以歐元調整市值（帳本仍以歐元紀錄）'
+    : '點擊調整市值（管理用，不影響銷售）';
+  return `<button type="button" class="mkt-edit-btn${emptyCls}" data-mkt-id="${productId}" title="${tip}">${label}</button>`;
 }
 
 function wireMarketPriceEditors(wrap, scopeF) {
@@ -3942,7 +4055,9 @@ function openMarketPriceEditor(btn, scopeF) {
     }
     save();
     renderInventoryPage(scopeF);
-    toast('市值已更新（商業/私人共用，不影響銷售）', 's');
+    toast(_invDisplayCurrency === 'TWD'
+      ? '市值已以歐元更新（顯示會依匯率換成台幣）'
+      : '市值已更新（商業/私人共用，不影響銷售）', 's');
   };
 
   inp.addEventListener('blur', commit);
@@ -6278,6 +6393,15 @@ function wireEvents() {
   q('btnLogout')?.addEventListener('click', doLogout);
   q('btnTgPair')?.addEventListener('click', doTelegramPair);
   q('btnInboxReload')?.addEventListener('click', () => renderInbox());
+
+  document.querySelectorAll('[data-inv-ccy]').forEach(btn => {
+    btn.addEventListener('click', () => setInvDisplayCurrency(btn.dataset.invCcy));
+  });
+  document.querySelectorAll('[data-inv-fx-rate]').forEach(btn => {
+    btn.addEventListener('click', editInvTwdRate);
+  });
+  syncInvFxControls();
+  if (_invDisplayCurrency === 'TWD') ensureInvTwdRate();
 
   document.querySelectorAll('#cfRangeTabs .pill-btn').forEach(btn => {
     btn.addEventListener('click', () => {
