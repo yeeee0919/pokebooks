@@ -139,7 +139,8 @@ const ScopeLedger = (() => {
 
   function scopeForTab(tab) {
     if (tab === 'inventory-priv') return PRIV;
-    if (tab === 'inventory-biz' || tab === 'inventory') return BIZ;
+    if (tab === 'inventory') return PRIV;
+    if (tab === 'inventory-biz') return BIZ;
     return 'all';
   }
 

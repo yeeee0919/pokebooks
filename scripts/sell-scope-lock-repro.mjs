@@ -3,16 +3,19 @@
  * Run: node scripts/sell-scope-lock-repro.mjs
  *
  * Contract (matches openModalSell lock rules):
- * - inventory-priv tab → lock priv
- * - inventory-biz tab → lock biz
+ * - inventory tab + page scope priv → lock priv
+ * - inventory tab + page scope biz → lock biz
  * - other tabs (e.g. transactions) → no lock (preset only preselects)
  * - editing an existing SELL → no lock
  */
 
-function resolveSellScopeLock({ tab, presetScope = 'biz', isEdit = false }) {
+function isInventoryTab(tab) {
+  return tab === 'inventory' || tab === 'inventory-priv' || tab === 'inventory-biz';
+}
+
+function resolveSellScopeLock({ tab, pageScope = 'priv', isEdit = false }) {
   if (isEdit) return null;
-  if (tab === 'inventory-priv') return 'priv';
-  if (tab === 'inventory-biz') return 'biz';
+  if (isInventoryTab(tab)) return pageScope === 'biz' ? 'biz' : 'priv';
   return null;
 }
 
@@ -49,12 +52,12 @@ assert(
   'non-inventory tab: no lock'
 );
 assert(
-  resolveSellScopeLock({ tab: 'inventory-biz', presetScope: 'biz' }) === 'biz',
-  '商業庫存: lock biz'
+  resolveSellScopeLock({ tab: 'inventory', pageScope: 'biz' }) === 'biz',
+  '庫存頁切到商業: lock biz'
 );
 assert(
-  resolveSellScopeLock({ tab: 'inventory-priv', presetScope: 'priv' }) === 'priv',
-  '私人庫存: lock priv'
+  resolveSellScopeLock({ tab: 'inventory', pageScope: 'priv' }) === 'priv',
+  '庫存頁預設個人: lock priv'
 );
 assert(
   resolveSellScopeLock({ tab: 'transactions', presetScope: 'biz', isEdit: true }) === null,
@@ -77,8 +80,8 @@ assert(
   'openModalSell must not lock on presetScope === "biz"'
 );
 assert(
-  /tab\s*===\s*['"]inventory-priv['"]/.test(sellBlock) && /tab\s*===\s*['"]inventory-biz['"]/.test(sellBlock),
-  'openModalSell must lock only from inventory tabs'
+  /isInventoryTab\(tab\)/.test(sellBlock) && /inventoryPageScope\(\)/.test(sellBlock),
+  'openModalSell must lock from the unified 庫存 page via inventoryPageScope'
 );
 
 if (process.exitCode) {

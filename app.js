@@ -3382,8 +3382,7 @@ async function setInvDisplayCurrency(ccy) {
   syncInvFxControls();
   if (_invDisplayCurrency === 'TWD') await ensureInvTwdRate();
   const tab = currentTab();
-  if (tab === 'inventory-biz') renderInventoryPage('biz');
-  else if (tab === 'inventory-priv') renderInventoryPage('priv');
+  if (isInventoryTab(tab)) renderInventoryPage(inventoryPageScope());
 }
 
 function editInvTwdRate() {
@@ -3397,8 +3396,7 @@ function editInvTwdRate() {
   localStorage.setItem(INV_FX_RATE_KEY, String(n));
   syncInvFxControls();
   const tab = currentTab();
-  if (tab === 'inventory-biz') renderInventoryPage('biz');
-  else if (tab === 'inventory-priv') renderInventoryPage('priv');
+  if (isInventoryTab(tab)) renderInventoryPage(inventoryPageScope());
   toast('已更新顯示匯率（帳本仍以歐元為準）', 's');
 }
 function pct(n) { return Number(n||0).toFixed(1)+'%'; }
@@ -3465,9 +3463,9 @@ function updateKor() {
 // ══════════════════════════════════════════════════════════════
 const TAB_TITLES = {
   dashboard:        '儀表板',
-  inventory:        '庫存管理',
-  'inventory-biz':  '🏢 商業庫存 (報稅)',
-  'inventory-priv': '👤 私人庫存 (個人)',
+  inventory:        '庫存',
+  'inventory-biz':  '庫存',
+  'inventory-priv': '庫存',
   transactions:     '交易記錄',
   expenses:         '費用記錄',
   inbox:            '待補收件匣',
@@ -3477,7 +3475,38 @@ const TAB_TITLES = {
   settings:         '設定 & 備份',
 };
 
+let _invPageScope = 'priv'; // 庫存頁帳戶；進來預設個人
+
+function isInventoryTab(tab = currentTab()) {
+  return tab === 'inventory' || tab === 'inventory-biz' || tab === 'inventory-priv';
+}
+
+function inventoryPageScope() {
+  return _invPageScope === 'biz' ? 'biz' : 'priv';
+}
+
+function syncInvScopeFab() {
+  const fab = q('invScopeFab');
+  if (!fab) return;
+  fab.hidden = !isInventoryTab();
+  fab.querySelectorAll('.inv-scope-fab-btn').forEach(btn => {
+    const on = btn.dataset.invScope === inventoryPageScope();
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+
+function setInventoryScope(scope) {
+  _invPageScope = scope === 'biz' ? 'biz' : 'priv';
+  syncInvScopeFab();
+  if (isInventoryTab()) renderInventoryPage(inventoryPageScope());
+}
+
 function switchTab(tab) {
+  if (tab === 'inventory-biz' || tab === 'inventory-priv') {
+    _invPageScope = tab === 'inventory-biz' ? 'biz' : 'priv';
+    tab = 'inventory';
+  }
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('.nav-link').forEach(l=>l.classList.remove('active'));
   const view = document.getElementById('view-'+tab);
@@ -3485,13 +3514,14 @@ function switchTab(tab) {
   if (view) view.classList.add('active');
   if (link) link.classList.add('active');
   q('pageTitle').textContent = TAB_TITLES[tab]||tab;
+  syncInvScopeFab();
   renderTab(tab);
 }
 
 function renderTab(tab) {
   switch(tab) {
     case 'dashboard':        renderDashboard();              break;
-    case 'inventory':        renderInventoryPage('biz');     break;
+    case 'inventory':        renderInventoryPage(inventoryPageScope()); break;
     case 'inventory-biz':   renderInventoryPage('biz');     break;
     case 'inventory-priv':  renderInventoryPage('priv');    break;
     case 'transactions':    renderTransactions();           break;
@@ -3928,16 +3958,18 @@ function inventoryRowIsActive(m, childrenMetrics, statusF) {
   return parentHasAct || childHasAct;
 }
 
-function renderInventoryPage(scopeF = 'biz') {
-  const search  = (q(`invSearch-${scopeF}`)?.value || '').toLowerCase();
-  const langF   = q(`invLangFilter-${scopeF}`)?.value || '';
-  const statusF = q(`invStatusFilter-${scopeF}`)?.value || 'all';
+function renderInventoryPage(scopeF) {
+  scopeF = scopeF || inventoryPageScope();
+  const search  = (q('invSearch')?.value || '').toLowerCase();
+  const langF   = q('invLangFilter')?.value || '';
+  const statusF = q('invStatusFilter')?.value || 'all';
   const typeF   = _invTypeFilters[scopeF] || '';
 
   // Wire Pill buttons for this scope
-  const pills = q(`invTypePills-${scopeF}`);
+  const pills = q('invTypePills');
   if (pills) {
     pills.querySelectorAll('.pill-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.type || '') === typeF);
       btn.onclick = () => {
         pills.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
@@ -3975,10 +4007,10 @@ function renderInventoryPage(scopeF = 'biz') {
   const ccyNote = _invDisplayCurrency === 'TWD'
     ? ` · 顯示 NT$（1 € ≈ ${_invTwdPerEur ? _invTwdPerEur.toFixed(2) : '—'}，帳本仍為歐元）`
     : '';
-  q(`invMeta-${scopeF}`).innerHTML = `[${scopeLabel}] 在庫商品 <strong>${inStockCount}</strong> 種 · 共 <strong>${totalQtyAll}</strong> 張 · 總投入成本 <strong>${invMoney(totalCostAll)}</strong> · 現貨總市值 <strong>${invMoney(totalMktAll)}</strong>${ccyNote}`;
+  const wrap = q('invTableWrap');
+  if (!q('invMeta') || !wrap) return;
+  q('invMeta').innerHTML = `[${scopeLabel}] 在庫商品 <strong>${inStockCount}</strong> 種 · 共 <strong>${totalQtyAll}</strong> 張 · 總投入成本 <strong>${invMoney(totalCostAll)}</strong> · 現貨總市值 <strong>${invMoney(totalMktAll)}</strong>${ccyNote}`;
   syncInvFxControls();
-
-  const wrap = q(`invTableWrap-${scopeF}`);
   if (!activeParents.length) {
     wrap.innerHTML = `<div class="empty" style="padding:3rem">
       <div class="empty-ico">📦</div>
@@ -4862,7 +4894,7 @@ async function postInboxCard(id) {
 function openModalProduct(editId=null) {
   const isEdit = !!editId;
   const p = isEdit ? DB.products.find(x=>x.id===editId) : null;
-  const defaultScope = currentTab() === 'inventory-priv' ? 'priv' : 'biz';
+  const defaultScope = isInventoryTab() ? inventoryPageScope() : 'biz';
 
   q('mProductTitle').textContent = isEdit ? '編輯商品' : '新增商品';
   q('pEditId').value   = editId||'';
@@ -5237,14 +5269,11 @@ function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
   let scopeVal = editTx ? ScopeLedger.uiScopeForTx(editTx) : (presetScope === 'all' ? 'biz' : presetScope);
   _sellScopeLock = null;
   if (!editTx) {
-    // Lock only when opened from an inventory tab. Transactions「記錄銷售」
+    // Lock only when opened from the inventory page. Transactions「記錄銷售」
     // keeps free choice — presetScope only preselects, it must not lock.
-    if (tab === 'inventory-priv') {
-      scopeVal = 'priv';
-      _sellScopeLock = 'priv';
-    } else if (tab === 'inventory-biz') {
-      scopeVal = 'biz';
-      _sellScopeLock = 'biz';
+    if (isInventoryTab(tab)) {
+      scopeVal = inventoryPageScope();
+      _sellScopeLock = inventoryPageScope();
     }
   }
   setScopeValue('sellScope', scopeVal);
@@ -5670,6 +5699,7 @@ q('btnSaveGrade').addEventListener('click', ()=>{
 
   const gradeScope = getQty(fromId, 'biz') >= qty ? 'biz'
     : getQty(fromId, 'priv') >= qty ? 'priv'
+    : isInventoryTab() ? inventoryPageScope()
     : ScopeLedger.scopeForTab(currentTab()) === 'priv' ? 'priv' : 'biz';
 
   Ledger.recordGrade({
@@ -6638,16 +6668,14 @@ function wireEvents() {
   q('confirmOk').addEventListener('click', ()=>{ _confirmCb?.(); _confirmCb=null; closeModal('mConfirm'); });
   q('confirmCancel').addEventListener('click', ()=>{ _confirmCb=null; closeModal('mConfirm'); });
 
-  // Business Inventory filters
-  ['invSearch-biz','invLangFilter-biz','invStatusFilter-biz'].forEach(id=>{
-    q(id)?.addEventListener('input', () => renderInventoryPage('biz'));
-    q(id)?.addEventListener('change', () => renderInventoryPage('biz'));
+  // Inventory filters
+  ['invSearch','invLangFilter','invStatusFilter'].forEach(id=>{
+    q(id)?.addEventListener('input', () => renderInventoryPage(inventoryPageScope()));
+    q(id)?.addEventListener('change', () => renderInventoryPage(inventoryPageScope()));
   });
 
-  // Private Inventory filters
-  ['invSearch-priv','invLangFilter-priv','invStatusFilter-priv'].forEach(id=>{
-    q(id)?.addEventListener('input', () => renderInventoryPage('priv'));
-    q(id)?.addEventListener('change', () => renderInventoryPage('priv'));
+  q('invScopeFab')?.querySelectorAll('.inv-scope-fab-btn').forEach(btn => {
+    btn.addEventListener('click', () => setInventoryScope(btn.dataset.invScope));
   });
 
   // Add product buttons
@@ -6657,13 +6685,11 @@ function wireEvents() {
 
   // Transactions — open sell/buy with scope from current tab when possible
   q('btnAddSell').addEventListener('click', () => {
-    const tab = currentTab();
-    const preset = tab === 'inventory-priv' ? 'priv' : (tab === 'inventory-biz' ? 'biz' : 'biz');
+    const preset = isInventoryTab() ? inventoryPageScope() : 'biz';
     openModalSell(null, null, preset);
   });
   q('btnAddBuy').addEventListener('click', () => {
-    const tab = currentTab();
-    const preset = tab === 'inventory-priv' ? 'priv' : 'biz';
+    const preset = isInventoryTab() ? inventoryPageScope() : 'biz';
     openModalBuy(null, null, preset);
   });
   ['txScopeFilter','txYearFilter','txTypeFilter'].forEach(id=>q(id)?.addEventListener('change', renderTransactions));
@@ -6990,6 +7016,8 @@ function showLoginGate(msg) {
   const app = q('app');
   if (gate) gate.hidden = false;
   if (app) app.hidden = true;
+  const fab = q('invScopeFab');
+  if (fab) fab.hidden = true;
   const err = q('loginErr');
   if (err) {
     if (msg) { err.hidden = false; err.textContent = msg; }

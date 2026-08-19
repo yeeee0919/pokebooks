@@ -191,6 +191,66 @@ input, select { font-family: var(--font); }
 /* ─── VIEWS ─── */
 .view { display: none; }
 .view.active { display: block; }
+#view-inventory.active { padding-left: 4.25rem; }
+
+/* Left floating 個人 / 商業 switcher on 庫存 */
+.inv-scope-fab {
+  position: fixed;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px;
+  background: var(--s1);
+  border: 1px solid var(--b1);
+  border-radius: 18px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, .12);
+}
+.inv-scope-fab[hidden] { display: none !important; }
+.inv-scope-fab-btn {
+  width: 58px;
+  padding: .55rem .2rem .5rem;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--t3);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .12rem;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.inv-scope-fab-ico { font-size: 1.05rem; line-height: 1; }
+.inv-scope-fab-btn:hover { color: var(--t1); background: var(--s2); }
+.inv-scope-fab-btn.active {
+  background: var(--t1);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, .18);
+}
+@media (max-width: 700px) {
+  #view-inventory.active { padding-left: 0; padding-bottom: 5.5rem; }
+  .inv-scope-fab {
+    left: 50%;
+    top: auto;
+    bottom: 16px;
+    transform: translateX(-50%);
+    flex-direction: row;
+    border-radius: 999px;
+    padding: 4px;
+  }
+  .inv-scope-fab-btn {
+    width: auto;
+    flex-direction: row;
+    gap: .35rem;
+    padding: .45rem .9rem;
+    border-radius: 999px;
+  }
+}
 
 /* ─── KOR HERO ─── */
 .kor-hero {
