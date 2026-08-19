@@ -3259,32 +3259,78 @@ function applyLiveDb(db) {
   DB.settings = db.settings;
 }
 
+const LEDGER_DIRTY_KEY = 'pokeledger_ledger_dirty';
+const LEDGER_SAVED_AT_KEY = 'pokeledger_ledger_saved_at';
+const LEDGER_SYNCED_AT_KEY = 'pokeledger_ledger_synced_at';
+
+function shouldFlushLocalOnBoot({ dirty, savedAt = 0, syncedAt = 0 }) {
+  if (dirty) return true;
+  if (savedAt && savedAt > syncedAt) return true;
+  if (savedAt && !syncedAt) return true;
+  return false;
+}
+
+function isLocalUnsynced() {
+  let dirty = false;
+  let savedAt = 0;
+  let syncedAt = 0;
+  try {
+    dirty = localStorage.getItem(LEDGER_DIRTY_KEY) === '1';
+    savedAt = Number(localStorage.getItem(LEDGER_SAVED_AT_KEY) || 0);
+    syncedAt = Number(localStorage.getItem(LEDGER_SYNCED_AT_KEY) || 0);
+  } catch (e) {}
+  return shouldFlushLocalOnBoot({ dirty, savedAt, syncedAt });
+}
+
+function markLocalDirty() {
+  const now = Date.now();
+  try {
+    localStorage.setItem(LEDGER_DIRTY_KEY, '1');
+    localStorage.setItem(LEDGER_SAVED_AT_KEY, String(now));
+  } catch (e) {}
+}
+
+function markLocalSynced() {
+  const now = Date.now();
+  try {
+    localStorage.setItem(LEDGER_DIRTY_KEY, '0');
+    localStorage.setItem(LEDGER_SYNCED_AT_KEY, String(now));
+  } catch (e) {}
+}
+
 function save() {
+  markLocalDirty();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(ledgerPayload(DB))); } catch (e) {}
   cloudAutoSave();
   if (_apiReady) queueLedgerPut();
 }
 
-function queueLedgerPut() {
-  _ledgerPutChain = _ledgerPutChain.then(async () => {
-    try {
-      const saved = await PokeApi.putLedger(ledgerPayload(DB), _ledgerVersion);
-      _ledgerVersion = saved.version;
-    } catch (e) {
-      if (e.status === 409 && e.data?.ledger) {
-        applyLiveDb(hydrateLedger(e.data.ledger));
-        _ledgerVersion = e.data.version;
-        toast('活帳有更新，已重新載入後端版本', 'w');
-        refreshCurrentView();
-      } else if (e.status === 401) {
-        _apiReady = false;
-        showLoginGate('登入已過期，請重新登入');
-      } else {
-        console.warn('[ledger] put failed', e);
-        toast('同步後端失敗：' + (e.message || e), 'e');
-      }
+async function flushLedgerPut(retried = false) {
+  try {
+    const saved = await PokeApi.putLedger(ledgerPayload(DB), _ledgerVersion);
+    _ledgerVersion = saved.version;
+    markLocalSynced();
+    return true;
+  } catch (e) {
+    if (e.status === 409 && e.data?.version != null) {
+      _ledgerVersion = e.data.version;
+      if (!retried) return flushLedgerPut(true);
+      toast('同步衝突，本機修改仍保留。請再操作一次以寫回後端', 'w');
+      return false;
     }
-  });
+    if (e.status === 401) {
+      _apiReady = false;
+      showLoginGate('登入已過期，請重新登入');
+      return false;
+    }
+    console.warn('[ledger] put failed', e);
+    toast('同步後端失敗：' + (e.message || e), 'e');
+    return false;
+  }
+}
+
+function queueLedgerPut() {
+  _ledgerPutChain = _ledgerPutChain.then(() => flushLedgerPut());
 }
 
 // ── UID ────────────────────────────────────────────────────────
@@ -3475,7 +3521,13 @@ const TAB_TITLES = {
   settings:         '設定 & 備份',
 };
 
-let _invPageScope = 'priv'; // 庫存頁帳戶；進來預設個人
+let _invPageScope = (() => {
+  try {
+    return localStorage.getItem('pokeledger_inv_page_scope') === 'biz' ? 'biz' : 'priv';
+  } catch (e) {
+    return 'priv';
+  }
+})();
 
 function isInventoryTab(tab = currentTab()) {
   return tab === 'inventory' || tab === 'inventory-biz' || tab === 'inventory-priv';
@@ -3498,6 +3550,7 @@ function syncInvScopeFab() {
 
 function setInventoryScope(scope) {
   _invPageScope = scope === 'biz' ? 'biz' : 'priv';
+  try { localStorage.setItem('pokeledger_inv_page_scope', _invPageScope); } catch (e) {}
   syncInvScopeFab();
   if (isInventoryTab()) renderInventoryPage(inventoryPageScope());
 }
@@ -7064,14 +7117,42 @@ async function bootLedger() {
   const serverHasTx = (data.ledger?.products || []).length > 0 || (data.ledger?.transactions || []).length > 0;
   const local = loadLocalSnapshot();
   if (!data.version && !serverHasTx && local && local.products.length) {
+    applyLiveDb(hydrateLedger(local));
+    _ledgerVersion = data.version || 0;
     const saved = await PokeApi.putLedger(ledgerPayload(local), data.version);
     applyLiveDb(hydrateLedger(saved.ledger));
     _ledgerVersion = saved.version;
+    markLocalSynced();
     toast('已把本機帳本匯入後端（一次）。之後以伺服器為準。', 's');
     return;
   }
+  if (isLocalUnsynced() && local) {
+    applyLiveDb(hydrateLedger(local));
+    _ledgerVersion = data.version || 0;
+    const ok = await flushLedgerPut();
+    if (ok) toast('已把尚未同步的修改寫回後端', 's');
+    return;
+  }
+  try {
+    if (local && data.ledger && localStorage.getItem(LEDGER_SYNCED_AT_KEY) == null) {
+      const fp = db => JSON.stringify({
+        transactions: db.transactions,
+        products: (db.products || []).map(p => [p.id, p.marketPriceEUR]),
+        expenses: db.expenses,
+      });
+      if (fp(local) !== fp(hydrateLedger(data.ledger))) {
+        applyLiveDb(hydrateLedger(local));
+        _ledgerVersion = data.version || 0;
+        const ok = await flushLedgerPut();
+        if (ok) toast('已把尚未同步的修改寫回後端', 's');
+        return;
+      }
+    }
+  } catch (e) {}
   applyLiveDb(hydrateLedger(data.ledger || emptyLiveDb()));
   _ledgerVersion = data.version || 0;
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(ledgerPayload(DB))); } catch (e) {}
+  markLocalSynced();
 }
 
 async function enterApp() {
