@@ -157,6 +157,21 @@ const TransactionLedger = {
       return ids.length;
     }
 
+    /** Re-insert previously deleted transaction records (undo). Skips ids already present. */
+    function restoreRecords(records) {
+      if (!records?.length) return 0;
+      const existing = new Set(txns().map(t => t.id));
+      let n = 0;
+      records.forEach(t => {
+        if (!t?.id || existing.has(t.id)) return;
+        txns().push(t);
+        existing.add(t.id);
+        n++;
+      });
+      if (n) valuation.invalidate();
+      return n;
+    }
+
     function bulkUpdate(selectedIds, patch) {
       const idSet = new Set(selectedIds);
       let count = 0;
@@ -197,6 +212,7 @@ const TransactionLedger = {
       resolveDeleteIds,
       resolveBulkDeleteIds,
       deleteByIds,
+      restoreRecords,
       bulkUpdate,
       checkSellStock,
     };

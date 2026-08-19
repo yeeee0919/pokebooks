@@ -3748,7 +3748,7 @@ function renderCashFlowCard() {
   q('cfOutVal').textContent = eur(data.expense, 0);
   q('cfInVal').textContent = eur(data.income, 0);
 
-  document.querySelectorAll('#cfRangeTabs .pill-btn').forEach(btn => {
+  document.querySelectorAll('#cfRangeTabs .cf-seg-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.cfRange === _cfRange);
   });
   document.querySelectorAll('#cfScopeChips .cf-chip').forEach(btn => {
@@ -4468,10 +4468,22 @@ function renderExpenses() {
   q('expList').querySelectorAll('.del-exp').forEach(btn=>{
     btn.addEventListener('click', ()=>confirm2('確認刪除這筆費用？', ()=>{
       const id = btn.dataset.id;
+      const expense = DB.expenses.find(e => e.id === id);
+      const docs = (DB.documents || []).filter(d => d.expenseId === id).map(cloneRow);
+      if (!expense) return;
+      const snapshot = cloneRow(expense);
       DB.expenses = DB.expenses.filter(e=>e.id!==id);
       DB.documents = (DB.documents || []).filter(d => d.expenseId !== id);
-      proofDeleteAll(id);
-      save(); renderExpenses(); toast('費用已刪除','w');
+      save(); renderExpenses();
+      toastUndo('費用已刪除', {
+        restore() {
+          if (!DB.expenses.some(e => e.id === snapshot.id)) DB.expenses.push(snapshot);
+          const have = new Set((DB.documents || []).map(d => d.id));
+          docs.forEach(d => { if (d?.id && !have.has(d.id)) (DB.documents || (DB.documents = [])).push(d); });
+          save(); renderExpenses();
+        },
+        discard() { proofDeleteAll(id); },
+      });
     }));
   });
 }
@@ -5514,12 +5526,20 @@ function deleteTransaction(txId) {
   const p = DB.products.find(x=>x.id===tx.productId);
   const idsToDelete = Ledger.resolveDeleteIds(txId);
   confirm2(`確認刪除 ${tx.date} ${p?.name||''} 的 ${txBadge(tx.type)} 紀錄？${idsToDelete.length>1?'（含配對的私人帳）':''}`, ()=>{
-    idsToDelete.forEach(id => proofDeleteAll(id));
+    const snapshot = idsToDelete.map(id => Ledger.findById(id)).filter(Boolean).map(cloneRow);
     Ledger.deleteByIds(idsToDelete);
     save();
     updateKor();
     refreshCurrentView();
-    toast('交易紀錄已刪除', 's');
+    toastUndo('交易紀錄已刪除', {
+      restore() {
+        Ledger.restoreRecords(snapshot);
+        save();
+        updateKor();
+        refreshCurrentView();
+      },
+      discard() { idsToDelete.forEach(id => proofDeleteAll(id)); },
+    });
   });
 }
 
@@ -5581,15 +5601,23 @@ function applyBulkEdit() {
 function bulkDeleteTransactions() {
   if (_selectedTxIds.size === 0) return toast('請先勾選欲刪除的交易', 'w');
   const count = _selectedTxIds.size;
-  confirm2(`確認批次刪除已選取的 ${count} 筆交易紀錄？刪除後無法復原。`, ()=>{
+  confirm2(`確認批次刪除已選取的 ${count} 筆交易紀錄？`, ()=>{
     const idsToDelete = Ledger.resolveBulkDeleteIds([..._selectedTxIds]);
-    idsToDelete.forEach(id => proofDeleteAll(id));
+    const snapshot = idsToDelete.map(id => Ledger.findById(id)).filter(Boolean).map(cloneRow);
     Ledger.deleteByIds(idsToDelete);
     _selectedTxIds.clear();
     save();
     updateKor();
     refreshCurrentView();
-    toast(`已批次刪除 ${idsToDelete.length} 筆交易`, 's');
+    toastUndo(`已批次刪除 ${idsToDelete.length} 筆交易`, {
+      restore() {
+        Ledger.restoreRecords(snapshot);
+        save();
+        updateKor();
+        refreshCurrentView();
+      },
+      discard() { idsToDelete.forEach(id => proofDeleteAll(id)); },
+    });
   });
 }
 
@@ -6476,6 +6504,46 @@ function toast(msg, type='s') {
   setTimeout(()=>el.remove(), 3400);
 }
 
+const UNDO_MS = 8000;
+let _pendingUndo = null;
+
+function cloneRow(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function clearPendingUndo({ discard } = {}) {
+  if (!_pendingUndo) return;
+  clearTimeout(_pendingUndo.timer);
+  _pendingUndo.el?.remove();
+  const runDiscard = discard ? _pendingUndo.discard : null;
+  _pendingUndo = null;
+  if (runDiscard) {
+    try { Promise.resolve(runDiscard()); } catch (e) { console.warn('[undo] discard', e); }
+  }
+}
+
+/** After a destructive delete: toast with 復原. A new delete commits the previous one. */
+function toastUndo(msg, { restore, discard }) {
+  clearPendingUndo({ discard: true });
+  const el = document.createElement('div');
+  el.className = 'toast w has-undo';
+  el.innerHTML = `<span>⚠️</span><span>${esc(msg)}</span><button type="button" class="toast-undo">復原</button>`;
+  el.querySelector('.toast-undo').addEventListener('click', () => {
+    if (!_pendingUndo) return;
+    clearTimeout(_pendingUndo.timer);
+    _pendingUndo = null;
+    el.remove();
+    restore();
+    toast('已復原', 's');
+  });
+  q('toasts').appendChild(el);
+  _pendingUndo = {
+    el,
+    discard,
+    timer: setTimeout(() => clearPendingUndo({ discard: true }), UNDO_MS),
+  };
+}
+
 // ══════════════════════════════════════════════════════════════
 //  EVENT WIRING
 // ══════════════════════════════════════════════════════════════
@@ -6505,7 +6573,7 @@ function wireEvents() {
   syncInvFxControls();
   if (_invDisplayCurrency === 'TWD') ensureInvTwdRate();
 
-  document.querySelectorAll('#cfRangeTabs .pill-btn').forEach(btn => {
+  document.querySelectorAll('#cfRangeTabs .cf-seg-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       _cfRange = btn.dataset.cfRange || 'month';
       _cfDetailSide = null;

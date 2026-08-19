@@ -8,9 +8,9 @@ const ScopeLedger = (() => {
   const PRIV = 'priv';
   const LEGACY_DEFAULT = PRIV;
 
-  /** Fields synced bidirectionally between paired biz/priv transactions.
-   *  Unit price/cost is intentionally NOT synced — commercial book value and
-   *  private acquisition cost must stay independent for tax isolation. */
+  /** Fields copied from the commercial row onto the paired private row on edit.
+   *  Private-side edits never write back to commercial (same asymmetry as delete).
+   *  Unit price/cost is never synced automatically. */
   const PAIR_SYNC_FIELDS = [
     'productId', 'date', 'quantity',
     'platform', 'currency', 'fee', 'feePerUnitEUR', 'note', 'type',
@@ -106,8 +106,10 @@ const ScopeLedger = (() => {
     ];
   }
 
-  /** Apply edit to tx; pair only receives PAIR_SYNC_FIELDS (not unit cost).
-   *  opts.pairedPricePerUnitEUR — when set, also update the paired tx's unit cost. */
+  /** Apply edit to tx.
+   *  Commercial edit: pair receives PAIR_SYNC_FIELDS (not unit cost unless
+   *  opts.pairedPricePerUnitEUR is set).
+   *  Private edit: commercial books are never mutated. */
   function applyPairedEdit(transactions, txId, updates, opts = {}) {
     const tx = transactions.find(t => t.id === txId);
     if (!tx) return [];
@@ -124,7 +126,8 @@ const ScopeLedger = (() => {
     Object.assign(tx, syncUpdates);
 
     const paired = findPairedTx(tx, transactions);
-    if (paired) {
+    const editedScope = normalizeScope(tx, transactions);
+    if (paired && editedScope !== PRIV) {
       Object.assign(paired, syncUpdates);
       if (opts.pairedPricePerUnitEUR != null && opts.pairedPricePerUnitEUR !== '') {
         paired.pricePerUnitEUR = Number(opts.pairedPricePerUnitEUR);
