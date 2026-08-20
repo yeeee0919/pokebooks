@@ -649,7 +649,8 @@
 <!-- Add Expense -->
 <div class="modal-overlay" id="mExpense">
   <div class="modal">
-    <div class="mhd"><h2>💸 新增費用</h2><button class="mclose" data-close="mExpense">&times;</button></div>
+    <div class="mhd"><h2 id="mExpenseTitle">💸 新增費用</h2><button class="mclose" data-close="mExpense">&times;</button></div>
+    <input type="hidden" id="expEditId"/>
     <div class="mbd">
       <div class="frow">
         <div class="fg"><label>日期 <span class="req">*</span></label><input type="date" id="expDate" class="finp"/></div>

@@ -4515,6 +4515,37 @@ function expenseReceiptHref(e) {
   return e?.receiptPath || (SEEDED_DOCUMENTS.find(d => d.expenseId === e?.id)?.path) || '';
 }
 
+function expenseReceiptCell(e) {
+  const href = expenseReceiptHref(e);
+  if (href) {
+    return `<a class="link-btn exp-receipt" data-id="${esc(e.id)}" href="${esc(href)}" target="_blank" rel="noopener">發票</a>`;
+  }
+  if (e.hasReceipt) {
+    return `<button type="button" class="link-btn exp-receipt" data-id="${esc(e.id)}">發票</button>`;
+  }
+  return `<button type="button" class="link-btn exp-receipt" data-id="${esc(e.id)}" hidden>發票</button><span class="exp-receipt-none">—</span>`;
+}
+
+async function openExpenseReceipt(id) {
+  const recs = await proofGetAll(id);
+  if (!recs.length) return toast('沒有發票圖片', 'w');
+  openLightbox(URL.createObjectURL(recs[0].blob));
+}
+
+function hydrateExpenseReceiptButtons() {
+  const list = q('expList');
+  if (!list) return;
+  list.querySelectorAll('.exp-receipt[data-id]').forEach(async btn => {
+    if (btn.tagName === 'A' || !btn.hidden) return;
+    const recs = await proofGetAll(btn.dataset.id);
+    if (!recs.length) return;
+    btn.hidden = false;
+    btn.parentElement?.querySelector('.exp-receipt-none')?.remove();
+    const exp = DB.expenses.find(e => e.id === btn.dataset.id);
+    if (exp && !exp.hasReceipt) exp.hasReceipt = true;
+  });
+}
+
 function renderExpenses() {
   const catF = q('expCatFilter')?.value||'';
   let exps = [...DB.expenses].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -4532,9 +4563,8 @@ function renderExpenses() {
   }
 
   q('expList').innerHTML = `<div class="tx-wrap" style="border:1px solid var(--b1);border-radius:var(--r3)"><table class="tx-table">
-    <thead><tr><th>日期</th><th>類別</th><th>說明</th><th class="col-amt">未稅</th><th class="col-amt">BTW</th><th class="col-amt">實付</th><th>用途</th><th>憑證</th><th>刪除</th></tr></thead>
+    <thead><tr><th>日期</th><th>類別</th><th>說明</th><th class="col-amt">未稅</th><th class="col-amt">BTW</th><th class="col-amt">實付</th><th>用途</th><th>憑證</th><th>操作</th></tr></thead>
     <tbody>${exps.map(e=>{
-      const href = expenseReceiptHref(e);
       const desc = e.vendor ? `${e.desc}${e.invoiceNo ? ` · ${e.invoiceNo}` : ''}` : e.desc;
       return `<tr>
       <td class="mono">${e.date}</td>
@@ -4544,11 +4574,27 @@ function renderExpenses() {
       <td class="amount col-amt">${expenseBtwEur(e) ? eur(expenseBtwEur(e)) : '—'}</td>
       <td class="amount col-amt">${eur(expensePaidEur(e))}</td>
       <td style="font-size:.7rem">${e.isPrivate?'❌ 私人':'✅ 業務'}</td>
-      <td>${href ? `<a class="link-btn" href="${esc(href)}" target="_blank" rel="noopener">發票</a>` : '—'}</td>
-      <td><button class="link-btn del-exp" data-id="${e.id}">刪除</button></td>
+      <td>${expenseReceiptCell(e)}</td>
+      <td><button type="button" class="link-btn edit-exp" data-id="${esc(e.id)}">編輯</button> <button type="button" class="link-btn del-exp" data-id="${esc(e.id)}">刪除</button></td>
     </tr>`;
     }).join('')}</tbody>
   </table></div>`;
+
+  q('expList').querySelectorAll('.edit-exp').forEach(btn => {
+    btn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      openModalExpense(btn.dataset.id);
+    });
+  });
+  q('expList').querySelectorAll('.exp-receipt').forEach(el => {
+    el.addEventListener('click', ev => {
+      if (el.tagName === 'A') return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      openExpenseReceipt(el.dataset.id);
+    });
+  });
+  hydrateExpenseReceiptButtons();
 
   q('expList').querySelectorAll('.del-exp').forEach(btn=>{
     btn.addEventListener('click', ()=>confirm2('確認刪除這筆費用？', ()=>{
@@ -5777,6 +5823,31 @@ q('btnSaveGrade').addEventListener('click', ()=>{
 // ══════════════════════════════════════════════════════════════
 //  MODAL — EXPENSE
 // ══════════════════════════════════════════════════════════════
+function openModalExpense(editId = null) {
+  const exp = editId ? DB.expenses.find(e => e.id === editId) : null;
+  q('expEditId').value = editId || '';
+  if (q('mExpenseTitle')) q('mExpenseTitle').textContent = exp ? '💸 編輯費用' : '💸 新增費用';
+  q('expDate').value = exp?.date || today();
+  q('expCat').value = exp?.category || 'packaging';
+  const paid = exp ? (Number(exp.amountInclEur) || (expenseNetEur(exp) + expenseBtwEur(exp))) : '';
+  q('expAmt').value = paid === '' ? '' : Number(paid);
+  if (q('expBtw')) q('expBtw').value = exp ? (expenseBtwEur(exp) || '') : '';
+  if (q('expVendor')) q('expVendor').value = exp?.vendor || '';
+  if (q('expInvoice')) q('expInvoice').value = exp?.invoiceNo || '';
+  q('expDesc').value = exp?.desc || '';
+  if (q('expKm')) q('expKm').value = '';
+  q('mileageRow').style.display = (q('expCat').value === 'mileage') ? 'flex' : 'none';
+  const privVal = exp?.isPrivate ? 'true' : 'false';
+  const privRadio = document.querySelector(`input[name="expPrivate"][value="${privVal}"]`);
+  if (privRadio) privRadio.checked = true;
+  proofStageClear('expense');
+  renderProofThumbs('expense');
+  if (editId) proofGetAll(editId).then(recs => renderProofThumbs('expense', recs));
+  updateExpBtwHint();
+  updateExpNetPreview();
+  openModal('mExpense');
+}
+
 q('btnSaveExpense').addEventListener('click', ()=>{
   const date = q('expDate').value;
   const cat  = q('expCat').value;
@@ -5792,7 +5863,8 @@ q('btnSaveExpense').addEventListener('click', ()=>{
 
   const isPrivate = document.querySelector('input[name="expPrivate"]:checked')?.value==='true';
   const net = roundEur(paid - btw);
-  const id = uid();
+  const editId = q('expEditId')?.value || '';
+  const id = editId || uid();
   const row = {
     id, date, category: cat,
     amountEur: net,
@@ -5801,12 +5873,25 @@ q('btnSaveExpense').addEventListener('click', ()=>{
     desc, vendor, invoiceNo, isPrivate,
   };
   if (btw > 0 && !isPrivate && isPreKorDate(date)) row.vatRate = 0.21;
-  DB.expenses.push(row);
+  const existing = editId ? DB.expenses.find(e => e.id === editId) : null;
+  if (existing) {
+    if (existing.receiptPath) row.receiptPath = existing.receiptPath;
+    if (existing.hasReceipt) row.hasReceipt = existing.hasReceipt;
+    if (existing.note) row.note = existing.note;
+    Object.assign(existing, row);
+  } else {
+    DB.expenses.push(row);
+  }
   save();
-  proofCommit('expense', id).then(() => {
+  proofCommit('expense', id).then((n) => {
+    if (n) {
+      const saved = DB.expenses.find(e => e.id === id);
+      if (saved) saved.hasReceipt = true;
+      save();
+    }
     closeModal('mExpense');
     renderExpenses();
-    toast(btw ? `費用已記錄（未稅 ${eur(net)} · BTW ${eur(btw)}）` : '費用已記錄', 's');
+    toast(editId ? '費用已更新' : (btw ? `費用已記錄（未稅 ${eur(net)} · BTW ${eur(btw)}）` : '費用已記錄'), 's');
   });
 });
 
@@ -6761,22 +6846,7 @@ function wireEvents() {
   });
 
   // Expenses
-  q('btnAddExpense').addEventListener('click', ()=>{
-    q('expDate').value=today();
-    q('expCat').value='packaging';
-    q('expAmt').value='';
-    if (q('expBtw')) q('expBtw').value='';
-    if (q('expVendor')) q('expVendor').value='';
-    if (q('expInvoice')) q('expInvoice').value='';
-    q('expDesc').value='';
-    q('mileageRow').style.display='none';
-    document.querySelector('input[name="expPrivate"][value="false"]').checked=true;
-    proofStageClear('expense');
-    renderProofThumbs('expense');
-    updateExpBtwHint();
-    updateExpNetPreview();
-    openModal('mExpense');
-  });
+  q('btnAddExpense').addEventListener('click', () => openModalExpense());
   q('expCatFilter')?.addEventListener('change', renderExpenses);
   q('expCat').addEventListener('change', ()=>{
     const isMil = q('expCat').value==='mileage';

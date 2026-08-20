@@ -191,7 +191,19 @@ input, select { font-family: var(--font); }
 /* ─── VIEWS ─── */
 .view { display: none; }
 .view.active { display: block; }
-#view-inventory.active { padding-left: 4.25rem; }
+#view-inventory.active {
+  display: flex;
+  flex-direction: column;
+  padding-left: 4.25rem;
+  min-height: calc(100dvh - var(--topnav-h) - var(--topbar-h) - 2 * var(--content-pad));
+  max-height: calc(100dvh - var(--topnav-h) - var(--topbar-h) - 2 * var(--content-pad));
+}
+#view-inventory .toolbar,
+#view-inventory .inv-meta { flex-shrink: 0; }
+#view-inventory .inv-table-wrap {
+  flex: 1 1 auto;
+  min-height: 12rem;
+}
 
 /* Left floating 個人 / 商業 switcher on 庫存 */
 .inv-scope-fab {
@@ -233,7 +245,12 @@ input, select { font-family: var(--font); }
   box-shadow: 0 4px 12px rgba(15, 23, 42, .18);
 }
 @media (max-width: 700px) {
-  #view-inventory.active { padding-left: 0; padding-bottom: 5.5rem; }
+  #view-inventory.active {
+    padding-left: 0;
+    padding-bottom: 5.5rem;
+    min-height: calc(100dvh - var(--topnav-h) - var(--topbar-h) - 2 * var(--content-pad) - 3.5rem);
+    max-height: calc(100dvh - var(--topnav-h) - var(--topbar-h) - 2 * var(--content-pad) - 3.5rem);
+  }
   .inv-scope-fab {
     left: 50%;
     top: auto;
@@ -663,18 +680,20 @@ input, select { font-family: var(--font); }
 /* ─── INVENTORY TREE TABLE ─── */
 .inv-table-wrap {
   background: var(--s1); border: 1px solid var(--b1);
-  border-radius: var(--r3); overflow-x: auto;
+  border-radius: var(--r3); overflow: auto;
   box-shadow: 0 1px 3px rgba(15,23,42,.04);
 }
 .inv-table {
-  width: 100%; border-collapse: collapse; font-size: .81rem; text-align: left;
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: .81rem; text-align: left;
   min-width: 960px; font-variant-numeric: tabular-nums;
 }
 .inv-table th {
   background: var(--s2); color: var(--t3); font-weight: 700;
   padding: .65rem .8rem; border-bottom: 2px solid var(--b1);
   white-space: nowrap; font-size: .68rem; text-transform: uppercase; letter-spacing: .45px;
-  position: sticky; top: 0; z-index: 1;
+  position: sticky; top: 0; z-index: 3;
+  box-shadow: 0 1px 0 var(--b1);
 }
 .inv-table td {
   padding: .62rem .8rem; border-bottom: 1px solid var(--b1);
