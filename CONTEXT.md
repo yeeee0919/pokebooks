@@ -42,6 +42,8 @@ _Avoid_: treating private acquisition cost as commercial book value
 
 **Labeled guess** — a value extracted from photo/text that is asked back as 「對嗎？」. The model has no post right and no skip right.
 
+**Smart turn** — free-form Telegram replies are interpreted by an LLM that may update draft fields and answer unexpected situations, but still cannot post without an explicit user confirm, and must not invent kind/scope.
+
 _Avoid_: treating a Telegram message as posted; creating products from chat; using a non-ECB rate; posting a pre-KOR business expense without a BTW answer (including 「沒有」)
 
 ## Modules (architecture)
