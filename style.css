@@ -1144,6 +1144,19 @@ input, select { font-family: var(--font); }
   font-size: 2rem; color: #fff; cursor: pointer;
   background: none; border: none; line-height: 1;
 }
+.proof-lightbox-nav {
+  position: fixed; top: 50%; transform: translateY(-50%);
+  font-size: 2.4rem; color: #fff; cursor: pointer;
+  background: rgba(0,0,0,.35); border: none; line-height: 1;
+  padding: .35rem .55rem; border-radius: 8px;
+}
+.proof-lightbox-nav.prev { left: 1rem; }
+.proof-lightbox-nav.next { right: 1rem; }
+.proof-lightbox-count {
+  position: fixed; bottom: 1.2rem; left: 50%; transform: translateX(-50%);
+  color: #fff; font-size: .85rem; background: rgba(0,0,0,.45);
+  padding: .25rem .65rem; border-radius: 999px;
+}
 
 
 /* ─── TRANSACTION SPLIT LAYOUT ─── */

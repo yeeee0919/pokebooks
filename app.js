@@ -163,19 +163,46 @@ function addFilesToStage(modal, files) {
   renderProofThumbs(modal);
 }
 
-// Lightbox
-function openLightbox(src) {
+// Lightbox (one URL or several — Telegram 憑證可多張)
+function openLightbox(srcOrList) {
+  const urls = Array.isArray(srcOrList) ? srcOrList.filter(Boolean) : [srcOrList].filter(Boolean);
+  if (!urls.length) return;
   let lb = document.getElementById('proofLightbox');
   if (!lb) {
     lb = document.createElement('div');
     lb.id = 'proofLightbox';
     lb.className = 'proof-lightbox';
-    lb.innerHTML = `<button class="proof-lightbox-close">✕</button><img/>`;
+    lb.innerHTML = `
+      <button type="button" class="proof-lightbox-close">✕</button>
+      <button type="button" class="proof-lightbox-nav prev" hidden>‹</button>
+      <img alt="憑證"/>
+      <button type="button" class="proof-lightbox-nav next" hidden>›</button>
+      <div class="proof-lightbox-count" hidden></div>`;
     lb.querySelector('.proof-lightbox-close').onclick = () => lb.remove();
     lb.onclick = e => { if (e.target === lb) lb.remove(); };
     document.body.appendChild(lb);
   }
-  lb.querySelector('img').src = src;
+  let idx = 0;
+  const img = lb.querySelector('img');
+  const countEl = lb.querySelector('.proof-lightbox-count');
+  const prev = lb.querySelector('.proof-lightbox-nav.prev');
+  const next = lb.querySelector('.proof-lightbox-nav.next');
+  const show = () => {
+    img.src = urls[idx];
+    if (urls.length > 1) {
+      countEl.hidden = false;
+      countEl.textContent = `${idx + 1} / ${urls.length}`;
+      prev.hidden = false;
+      next.hidden = false;
+    } else {
+      countEl.hidden = true;
+      prev.hidden = true;
+      next.hidden = true;
+    }
+  };
+  prev.onclick = e => { e.stopPropagation(); idx = (idx - 1 + urls.length) % urls.length; show(); };
+  next.onclick = e => { e.stopPropagation(); idx = (idx + 1) % urls.length; show(); };
+  show();
 }
 
 
@@ -4511,14 +4538,22 @@ const CAT_LABELS = {
   equipment:'📷 設備', other:'其他',
 };
 
+function expenseServerPhotoIds(e) {
+  return Array.isArray(e?.photoIds) ? e.photoIds.filter(Boolean) : [];
+}
+
 function expenseReceiptHref(e) {
   return e?.receiptPath || (SEEDED_DOCUMENTS.find(d => d.expenseId === e?.id)?.path) || '';
 }
 
 function expenseReceiptCell(e) {
   const href = expenseReceiptHref(e);
+  const n = expenseServerPhotoIds(e).length;
   if (href) {
     return `<a class="link-btn exp-receipt" data-id="${esc(e.id)}" href="${esc(href)}" target="_blank" rel="noopener">發票</a>`;
+  }
+  if (n) {
+    return `<button type="button" class="link-btn exp-receipt" data-id="${esc(e.id)}">憑證×${n}</button>`;
   }
   if (e.hasReceipt) {
     return `<button type="button" class="link-btn exp-receipt" data-id="${esc(e.id)}">發票</button>`;
@@ -4526,10 +4561,33 @@ function expenseReceiptCell(e) {
   return `<button type="button" class="link-btn exp-receipt" data-id="${esc(e.id)}" hidden>發票</button><span class="exp-receipt-none">—</span>`;
 }
 
+function bindExpenseReceiptClicks(root) {
+  if (!root) return;
+  root.querySelectorAll('.exp-receipt').forEach(el => {
+    el.addEventListener('click', ev => {
+      if (el.tagName === 'A') return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      openExpenseReceipt(el.dataset.id);
+    });
+  });
+}
+
 async function openExpenseReceipt(id) {
+  const exp = DB.expenses.find(e => e.id === id);
+  const serverIds = expenseServerPhotoIds(exp);
+  if (serverIds.length) {
+    openLightbox(serverIds.map(pid => PokeApi.photoUrl(pid)));
+    return;
+  }
+  const href = expenseReceiptHref(exp);
+  if (href) {
+    window.open(href, '_blank', 'noopener');
+    return;
+  }
   const recs = await proofGetAll(id);
   if (!recs.length) return toast('沒有發票圖片', 'w');
-  openLightbox(URL.createObjectURL(recs[0].blob));
+  openLightbox(recs.map(r => URL.createObjectURL(r.blob)));
 }
 
 function hydrateExpenseReceiptButtons() {
@@ -4537,11 +4595,17 @@ function hydrateExpenseReceiptButtons() {
   if (!list) return;
   list.querySelectorAll('.exp-receipt[data-id]').forEach(async btn => {
     if (btn.tagName === 'A' || !btn.hidden) return;
+    const exp = DB.expenses.find(e => e.id === btn.dataset.id);
+    if (expenseServerPhotoIds(exp).length) {
+      btn.hidden = false;
+      btn.textContent = `憑證×${expenseServerPhotoIds(exp).length}`;
+      btn.parentElement?.querySelector('.exp-receipt-none')?.remove();
+      return;
+    }
     const recs = await proofGetAll(btn.dataset.id);
     if (!recs.length) return;
     btn.hidden = false;
     btn.parentElement?.querySelector('.exp-receipt-none')?.remove();
-    const exp = DB.expenses.find(e => e.id === btn.dataset.id);
     if (exp && !exp.hasReceipt) exp.hasReceipt = true;
   });
 }
@@ -4586,14 +4650,7 @@ function renderExpenses() {
       openModalExpense(btn.dataset.id);
     });
   });
-  q('expList').querySelectorAll('.exp-receipt').forEach(el => {
-    el.addEventListener('click', ev => {
-      if (el.tagName === 'A') return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      openExpenseReceipt(el.dataset.id);
-    });
-  });
+  bindExpenseReceiptClicks(q('expList'));
   hydrateExpenseReceiptButtons();
 
   q('expList').querySelectorAll('.del-exp').forEach(btn=>{
@@ -5842,10 +5899,27 @@ function openModalExpense(editId = null) {
   if (privRadio) privRadio.checked = true;
   proofStageClear('expense');
   renderProofThumbs('expense');
-  if (editId) proofGetAll(editId).then(recs => renderProofThumbs('expense', recs));
+  if (editId) {
+    proofGetAll(editId).then(recs => renderProofThumbs('expense', recs)).then(() => {
+      renderServerProofThumbs('expense', expenseServerPhotoIds(exp));
+    });
+  }
   updateExpBtwHint();
   updateExpNetPreview();
   openModal('mExpense');
+}
+
+function renderServerProofThumbs(modal, photoIds) {
+  const thumbsEl = q(`${modal}ProofThumbs`);
+  if (!thumbsEl || !photoIds?.length) return;
+  const urls = photoIds.map(id => PokeApi.photoUrl(id));
+  photoIds.forEach((id, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'proof-thumb';
+    wrap.innerHTML = `<img src="${urls[i]}" alt="Telegram 憑證"/>`;
+    wrap.querySelector('img').onclick = () => openLightbox(urls);
+    thumbsEl.appendChild(wrap);
+  });
 }
 
 q('btnSaveExpense').addEventListener('click', ()=>{
@@ -6413,11 +6487,15 @@ async function writeOpeningInventoryToCloud(doc, evidenceFiles) {
 
 function expenseReceiptsHtml() {
   const recs = [...DB.expenses]
-    .filter(e => !e.isPrivate && (e.receiptPath || e.vendor || expenseBtwEur(e)))
+    .filter(e => !e.isPrivate && (e.receiptPath || expenseServerPhotoIds(e).length || e.vendor || expenseBtwEur(e)))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
   if (!recs.length) return '';
   const rows = recs.map(e => {
     const href = expenseReceiptHref(e);
+    const n = expenseServerPhotoIds(e).length;
+    let fileCell = '—';
+    if (href) fileCell = `<a class="link-btn" href="${esc(href)}" target="_blank" rel="noopener">打開發票</a>`;
+    else if (n) fileCell = `<button type="button" class="link-btn exp-receipt" data-id="${esc(e.id)}">憑證×${n}</button>`;
     return `<tr>
       <td class="mono">${esc(e.date)}</td>
       <td>${esc(e.vendor || '—')}</td>
@@ -6426,7 +6504,7 @@ function expenseReceiptsHtml() {
       <td class="col-num">${eur(expenseNetEur(e))}</td>
       <td class="col-num">${expenseBtwEur(e) ? eur(expenseBtwEur(e)) : '—'}</td>
       <td class="col-num-strong">${eur(expensePaidEur(e))}</td>
-      <td>${href ? `<a class="link-btn" href="${esc(href)}" target="_blank" rel="noopener">打開發票</a>` : '—'}</td>
+      <td>${fileCell}</td>
     </tr>`;
   }).join('');
   const btw = recs.filter(isVoorbelasting).reduce((s, e) => s + expenseBtwEur(e), 0);
@@ -6435,7 +6513,7 @@ function expenseReceiptsHtml() {
       <div class="panel-hd">
         <div>
           <p class="panel-title">費用發票（商業）</p>
-          <p class="docs-meta">KOR 前進項 BTW 合計 ${eur(btw)} · 檔案在 documents/receipts/</p>
+          <p class="docs-meta">KOR 前進項 BTW 合計 ${eur(btw)} · Telegram 憑證與 documents/receipts/</p>
         </div>
         <span class="docs-badge">報帳佐證</span>
       </div>
@@ -6501,6 +6579,7 @@ async function renderDocuments() {
       </div>`;
     body += expenseReceiptsHtml();
     root.innerHTML = body;
+    bindExpenseReceiptClicks(root);
     q('btnArchiveOpening')?.addEventListener('click', async () => {
       await archiveOpeningInventoryDocument({ force: true });
       renderDocuments();
@@ -6562,6 +6641,7 @@ async function renderDocuments() {
 
   body += expenseReceiptsHtml();
   root.innerHTML = body;
+  bindExpenseReceiptClicks(root);
 
   q('btnArchiveOpening')?.addEventListener('click', async () => {
     const ok = await confirm2Async(
