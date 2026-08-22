@@ -128,6 +128,36 @@ async function run() {
   const twd = await fetchEcbRate('TWD', fakeEcb);
   assert(twd === null, 'twd not invented');
 
+  // Confirm step: 「不對 是台幣」must rewrite currency, not ignore
+  d = newDraft('d3b');
+  d.fields = {
+    ...d.fields,
+    kind: 'EXPENSE', scope: 'biz', date: '2026-08-14',
+    currency: 'EUR', amountEur: 5733, originalAmount: 5733,
+    desc: '卡盒', category: 'equipment', btwEur: 0, btwAnswered: true,
+  };
+  d.waitingFor = WAIT.CONFIRM;
+  r = await applyAnswer(d, '不對 是台幣 不是歐元', { settings, products, fxLookup });
+  assert(d.fields.currency === 'TWD', 'confirm currency fix');
+  assert(d.fields.originalAmount === 5733, 'keep number as TWD');
+  assert(d.fields.amountEur == null, 'clear wrong EUR');
+  assert(r.replies.some(t => t.includes('已改') && t.includes('TWD')), 'ack change');
+  assert(d.waitingFor === WAIT.FX, 'needs EUR after TWD');
+  assert(!r.posted, 'did not post');
+
+  // Instruction text must not become vendor
+  d = newDraft('d3c');
+  d.fields.kind = 'EXPENSE';
+  d.fields.scope = 'biz';
+  d.fields.date = '2026-08-14';
+  d.fields.amountEur = 10;
+  d.fields.desc = 'x';
+  d.fields.category = 'other';
+  d.guesses = { vendor: 'Foo' };
+  d.waitingFor = WAIT.VENDOR;
+  r = await applyAnswer(d, '我照片有很多商品，但這些都幫我計算在同一筆', { settings, products, fxLookup });
+  assert(d.fields.vendor === '', 'instruction not vendor');
+
   // BUY without product stays incomplete
   d = newDraft('d4');
   d.fields = {
@@ -168,6 +198,7 @@ async function run() {
   // Confirm summary mentions no telegram edit
   const summary = confirmSummary(d.fields, settings);
   assert(summary.includes('Telegram 不能改'), 'no edit after post');
+  assert(summary.includes('直接說') || summary.includes('台幣'), 'confirm hints corrections');
 
   console.log('inbox-repro: ok');
 }
