@@ -5,6 +5,7 @@
 import { newDraft, WAIT } from '../lib/constants.js';
 import { applyConfirmCorrection } from '../lib/conversation.js';
 import { canPost } from '../lib/completeness.js';
+import { isSimpleAnswer } from '../lib/parse.js';
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -28,5 +29,11 @@ assert(d.fields.amountEur == null, 'cleared eur');
 applyConfirmCorrection(d, '商家清掉');
 assert(d.fields.vendor === '', 'vendor cleared');
 assert(!canPost(d.fields, settings), 'needs EUR before post');
+
+assert(isSimpleAnswer(d, '對'), 'confirm yes is simple');
+const kindDraft = newDraft('s2');
+kindDraft.waitingFor = WAIT.KIND;
+assert(isSimpleAnswer(kindDraft, '3'), 'kind digit is simple');
+assert(!isSimpleAnswer(d, '台幣 商務 設備 四張同一單'), 'multi-field uses smart');
 
 console.log('smart-turn-repro: ok');
