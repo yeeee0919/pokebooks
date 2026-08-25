@@ -72,7 +72,7 @@ async function proofDeleteAll(txId) {
 }
 
 // In-memory staging area for newly-picked files before tx is saved
-const _proofStage = { buy: [], sell: [], product: [], expense: [] }; // { file, objectURL }[]
+const _proofStage = { buy: [], sell: [], sellPostage: [], product: [], expense: [] }; // { file, objectURL }[]
 
 function proofStageClear(modal) {
   (_proofStage[modal] || []).forEach(s => URL.revokeObjectURL(s.objectURL));
@@ -3123,6 +3123,25 @@ const SEEDED_EXPENSES = [
     receiptPath: 'documents/receipts/2026-08-14_Yatuo_DP75798529_invoice.png',
     note: '訂單 315231 · 轉運單 907818987385 · 黑貓宅急便。NT$2,430 ÷ 匯率 0.027009 ≈ €65.63。台灣電子發票，荷蘭不可扣進項 BTW，全額入 IB 營業費用。',
   },
+  {
+    id: 'exp-tenso-260824TS01680',
+    date: '2026-08-24',
+    category: 'packaging',
+    amountEur: 74.18,
+    btwEur: 0,
+    amountInclEur: 74.18,
+    originalCurrency: 'JPY',
+    originalAmount: 13768,
+    fxRate: 0.005387931034482759,
+    fxDate: '2026-08-24',
+    desc: '日本寄貨運費（轉送 JAPAN）',
+    vendor: '転送 JAPAN (Tenso)',
+    invoiceNo: '260824TS01680',
+    paymentMethod: '信用卡（Richart）',
+    isPrivate: false,
+    receiptPath: 'documents/receipts/2026-08-24_Tenso_260824TS01680_payment.png',
+    note: '受理編號 260824TS01680。ECB 2026-08-24：1 EUR = 185.6 JPY，JP￥13,768 ≈ €74.18。信用卡商家 NAVIBIRD 扣款 NT$2,769（Richart 8901）為同一筆付款憑證，非第二筆。日本消費稅不可列荷蘭 voorbelasting，全額入 IB 營業費用。',
+  },
 ];
 
 const SEEDED_DOCUMENTS = [
@@ -3147,6 +3166,17 @@ const SEEDED_DOCUMENTS = [
     amountExclEur: 65.63,
     btwEur: 0,
     amountInclEur: 65.63,
+  },
+  {
+    id: 'doc-tenso-260824TS01680',
+    type: DOC_TYPE_EXPENSE_RECEIPT,
+    title: '転送 JAPAN 受理 260824TS01680 — 日本寄貨運費',
+    expenseId: 'exp-tenso-260824TS01680',
+    date: '2026-08-24',
+    path: 'documents/receipts/2026-08-24_Tenso_260824TS01680_payment.png',
+    amountExclEur: 74.18,
+    btwEur: 0,
+    amountInclEur: 74.18,
   },
 ];
 
@@ -3502,6 +3532,111 @@ function expensePaidEur(e) {
 }
 function isVoorbelasting(e) {
   return !!(e && !e.isPrivate && isPreKorDate(e.date) && expenseBtwEur(e) > 0);
+}
+
+function sellPostagePaidInput() {
+  const raw = q('sellPostageAmt')?.value;
+  if (raw == null || String(raw).trim() === '') return null;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function sellPostageIbCost(date, paid, btw) {
+  if (!(paid > 0)) return 0;
+  if (isPreKorDate(date) && btw > 0) return roundEur(paid - btw);
+  return roundEur(paid);
+}
+
+function postageExpenseForTx(tx) {
+  if (!tx) return null;
+  if (tx.postageExpenseId) {
+    return (DB.expenses || []).find(e => e.id === tx.postageExpenseId) || null;
+  }
+  return (DB.expenses || []).find(e =>
+    e.source === 'sell_postage' && Array.isArray(e.sellTxIds) && e.sellTxIds.includes(tx.id)
+  ) || null;
+}
+
+function clearPostageLinksToExpense(expenseId) {
+  if (!expenseId) return;
+  (DB.transactions || []).forEach(t => {
+    if (t.postageExpenseId === expenseId) delete t.postageExpenseId;
+  });
+}
+
+function sellPostageDesc(platform, note) {
+  const plat = platform === 'CM' ? 'Cardmarket' : (platform || '銷售');
+  const n = String(note || '').trim();
+  return n ? `銷售寄貨（${plat}）· ${n}` : `銷售寄貨（${plat}）`;
+}
+
+function upsertSellPostageExpense({ expenseId, sellIds, date, paid, btw, platform, note }) {
+  const net = roundEur(paid - (btw || 0));
+  const id = expenseId || uid();
+  const existing = (DB.expenses || []).find(e => e.id === id);
+  const row = {
+    id,
+    date,
+    category: 'packaging',
+    amountEur: net,
+    btwEur: roundEur(btw || 0),
+    amountInclEur: roundEur(paid),
+    desc: sellPostageDesc(platform, note),
+    vendor: existing?.vendor || '',
+    invoiceNo: existing?.invoiceNo || '',
+    isPrivate: false,
+    source: 'sell_postage',
+    sellTxIds: [...new Set(sellIds.filter(Boolean))],
+  };
+  if (existing?.receiptPath) row.receiptPath = existing.receiptPath;
+  if (existing?.hasReceipt) row.hasReceipt = existing.hasReceipt;
+  if (existing?.note) row.note = existing.note;
+  if (btw > 0 && isPreKorDate(date)) row.vatRate = 0.21;
+  if (existing) Object.assign(existing, row);
+  else {
+    if (!Array.isArray(DB.expenses)) DB.expenses = [];
+    DB.expenses.push(row);
+  }
+  row.sellTxIds.forEach(txId => {
+    const t = Ledger.findById(txId);
+    if (t) t.postageExpenseId = id;
+  });
+  return id;
+}
+
+function deleteSellPostageExpense(expenseId) {
+  if (!expenseId) return;
+  clearPostageLinksToExpense(expenseId);
+  DB.expenses = (DB.expenses || []).filter(e => e.id !== expenseId);
+}
+
+/** When deleting SELL rows, drop them from linked postage expenses; delete the expense if no sells remain. */
+function detachPostageForDeletedSells(deletedTxIds) {
+  const idSet = new Set(deletedTxIds);
+  const snapshots = [];
+  (DB.expenses || []).forEach(e => {
+    if (e.source !== 'sell_postage' || !Array.isArray(e.sellTxIds)) return;
+    if (!e.sellTxIds.some(id => idSet.has(id))) return;
+    snapshots.push({ expense: cloneRow(e), remaining: e.sellTxIds.filter(id => !idSet.has(id)) });
+  });
+  snapshots.forEach(s => {
+    if (s.remaining.length === 0) {
+      DB.expenses = (DB.expenses || []).filter(e => e.id !== s.expense.id);
+    } else {
+      const live = (DB.expenses || []).find(e => e.id === s.expense.id);
+      if (live) live.sellTxIds = s.remaining;
+    }
+  });
+  return snapshots;
+}
+
+function restorePostageDetach(snapshots) {
+  if (!Array.isArray(DB.expenses)) DB.expenses = [];
+  snapshots.forEach(s => {
+    const live = DB.expenses.find(e => e.id === s.expense.id);
+    if (live) Object.assign(live, s.expense);
+    else DB.expenses.push(cloneRow(s.expense));
+  });
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -4660,12 +4795,20 @@ function renderExpenses() {
       const docs = (DB.documents || []).filter(d => d.expenseId === id).map(cloneRow);
       if (!expense) return;
       const snapshot = cloneRow(expense);
+      const linkedSells = (DB.transactions || [])
+        .filter(t => t.postageExpenseId === id)
+        .map(t => t.id);
       DB.expenses = DB.expenses.filter(e=>e.id!==id);
       DB.documents = (DB.documents || []).filter(d => d.expenseId !== id);
+      clearPostageLinksToExpense(id);
       save(); renderExpenses();
       toastUndo('費用已刪除', {
         restore() {
           if (!DB.expenses.some(e => e.id === snapshot.id)) DB.expenses.push(snapshot);
+          linkedSells.forEach(txId => {
+            const t = Ledger.findById(txId);
+            if (t) t.postageExpenseId = snapshot.id;
+          });
           const have = new Set((DB.documents || []).map(d => d.id));
           docs.forEach(d => { if (d?.id && !have.has(d.id)) (DB.documents || (DB.documents = [])).push(d); });
           save(); renderExpenses();
@@ -5452,14 +5595,30 @@ function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
   q('sellNote').value   = editTx ? (editTx.note||'') : '';
   q('ossAlert').style.display='none';
   q('sellKorCheck').textContent='';
+  const postageExp = editTx ? postageExpenseForTx(editTx) : null;
+  if (q('sellPostageExpenseId')) q('sellPostageExpenseId').value = postageExp?.id || '';
+  if (q('sellPostageAmt')) {
+    q('sellPostageAmt').value = postageExp ? String(expensePaidEur(postageExp)) : '';
+  }
+  if (q('sellPostageBtw')) {
+    q('sellPostageBtw').value = postageExp && expenseBtwEur(postageExp)
+      ? String(expenseBtwEur(postageExp))
+      : '';
+  }
   // Clear staged images and load existing if editing
   proofStageClear('sell');
+  proofStageClear('sellPostage');
   renderProofThumbs('sell');
+  renderProofThumbs('sellPostage');
   if (editTxId) {
     proofGetAll(editTxId).then(recs => renderProofThumbs('sell', recs));
   }
+  if (postageExp?.id) {
+    proofGetAll(postageExp.id).then(recs => renderProofThumbs('sellPostage', recs));
+  }
   updateSellCostPreview();
   updateKorCheck();
+  updateSellPostageUI();
   openModal('mSell');
 }
 
@@ -5486,6 +5645,25 @@ function updateSellScopeUI() {
         ? '從商業庫存進入：只記入商業帳並計入 KOR（不再自動寫入私人）。'
         : '商業銷售只記入商業帳並計入 KOR（不再自動鏡射到私人）。';
     }
+  }
+  updateSellPostageUI();
+}
+
+function updateSellPostageUI() {
+  const block = q('sellPostageBlock');
+  if (!block) return;
+  const biz = sellFormScope() === 'biz';
+  block.hidden = !biz;
+  if (!biz) return;
+  const date = q('sellDate')?.value;
+  const preKor = !!(date && isPreKorDate(date));
+  const btwWrap = q('sellPostageBtwWrap');
+  if (btwWrap) btwWrap.hidden = !preKor;
+  const hint = q('sellPostageBtwHint');
+  if (hint) {
+    hint.textContent = preKor
+      ? `此日在 KOR（${korStartDate()}）之前：請填收據上的荷蘭 BTW（沒有就填 0）。所得稅只扣未稅。`
+      : 'KOR 期間通常不能扣進項 BTW，寄貨成本請填實付含稅。';
   }
 }
 
@@ -5525,7 +5703,17 @@ function updateProfitPreview() {
     fee += l.fee || 0;
     if (qty) cogs += computeCogs(l.productId, today(), qty, scope);
   }
-  const gp = rev - fee - cogs;
+  const date = q('sellDate')?.value;
+  const paid = sellPostagePaidInput();
+  const postageOn = sellFormScope() === 'biz' && paid > 0;
+  const btw = postageOn && date && isPreKorDate(date)
+    ? (parseFloat(q('sellPostageBtw')?.value) || 0)
+    : 0;
+  const postageIb = postageOn ? sellPostageIbCost(date, paid, btw) : 0;
+  const postageRow = q('pb-postage-row');
+  if (postageRow) postageRow.hidden = !postageOn;
+  if (q('pb-postage')) q('pb-postage').textContent = postageOn ? eur(postageIb) : '—';
+  const gp = rev - fee - cogs - postageIb;
   q('pb-rev').textContent  = eur(rev);
   q('pb-fee').textContent  = eur(fee);
   q('pb-cogs').textContent = any ? eur(cogs) : '—';
@@ -5585,6 +5773,32 @@ q('btnSaveSell').addEventListener('click', async ()=>{
 
   let scopeVal = q('sellScope').value || 'biz';
   if (_sellScopeLock) scopeVal = _sellScopeLock;
+
+  let postagePlan = { mode: 'none' };
+  if (scopeVal === 'biz') {
+    const paid = sellPostagePaidInput();
+    if (paid != null) {
+      if (isNaN(paid) || paid < 0) return toast('請輸入有效寄貨成本','e');
+      if (paid > 0) {
+        let btw = 0;
+        if (isPreKorDate(date)) {
+          const raw = q('sellPostageBtw')?.value;
+          if (raw == null || String(raw).trim() === '') {
+            return toast('KOR 前請填寄貨 BTW（沒有就填 0）','e');
+          }
+          btw = parseFloat(raw) || 0;
+          if (btw < 0 || btw > paid) return toast('寄貨 BTW 金額不合理','e');
+        }
+        const existingExpId = q('sellPostageExpenseId')?.value || '';
+        const existingProofs = existingExpId ? await proofGetAll(existingExpId) : [];
+        const staged = (_proofStage.sellPostage || []).length;
+        if (existingProofs.length + staged < 1) {
+          return toast('填了寄貨成本就必須上傳郵局／物流收據（不能用賣出截圖代替）','e');
+        }
+        postagePlan = { mode: 'save', paid, btw, expenseId: existingExpId };
+      }
+    }
+  }
 
   const needByProduct = {};
   for (const l of lines) {
@@ -5648,23 +5862,57 @@ q('btnSaveSell').addEventListener('click', async ()=>{
     }
   }
 
-  save();
-  proofCommitToIds('sell', allIds).then(() => {
+  const leftoverPostageId = q('sellPostageExpenseId')?.value || '';
+  if (postagePlan.mode === 'save') {
+    const prev = leftoverPostageId
+      ? (DB.expenses || []).find(e => e.id === leftoverPostageId)
+      : null;
+    const sellIds = [...new Set([...(prev?.sellTxIds || []), ...allIds])];
+    const postageId = upsertSellPostageExpense({
+      expenseId: leftoverPostageId || null,
+      sellIds,
+      date,
+      paid: postagePlan.paid,
+      btw: postagePlan.btw,
+      platform: shared.platform,
+      note: shared.note,
+    });
+    save();
+    proofCommitToIds('sell', allIds).then(() => proofCommit('sellPostage', postageId)).then(() => {
+      const saved = DB.expenses.find(e => e.id === postageId);
+      if (saved) saved.hasReceipt = true;
+      save();
+      finishSellSave();
+    });
+  } else {
+    if (leftoverPostageId) {
+      proofDeleteAll(leftoverPostageId);
+      deleteSellPostageExpense(leftoverPostageId);
+    }
+    save();
+    proofCommitToIds('sell', allIds).then(() => {
+      proofStageClear('sellPostage');
+      finishSellSave();
+    });
+  }
+
+  function finishSellSave() {
     closeModal('mSell');
     _sellScopeLock = null;
     updateKor();
     refreshCurrentView();
     const where = scopeVal === 'priv' ? '私人帳（不計 KOR）' : '商業帳（計入 KOR）';
     const lineN = lines.length;
+    const postageNote = postagePlan.mode === 'save' ? ' · 已記寄貨費用' : '';
     toast(
       editId
-        ? `銷售紀錄已更新（${where}）`
+        ? `銷售紀錄已更新（${where}${postageNote}）`
         : (lineN > 1
-          ? `銷售 ${lineN} 筆 × ${totalQty} 張已記入${where}`
-          : `銷售 × ${totalQty} 已記入${where}`),
+          ? `銷售 ${lineN} 筆 × ${totalQty} 張已記入${where}${postageNote}`
+          : `銷售 × ${totalQty} 已記入${where}${postageNote}`),
       's'
     );
-  });
+  }
 });
 
 // ── Transaction edit / delete helpers ─────────────────────────
@@ -5712,6 +5960,7 @@ function deleteTransaction(txId) {
   const idsToDelete = Ledger.resolveDeleteIds(txId);
   confirm2(`確認刪除 ${tx.date} ${p?.name||''} 的 ${txBadge(tx.type)} 紀錄？${idsToDelete.length>1?'（含配對的私人帳）':''}`, ()=>{
     const snapshot = idsToDelete.map(id => Ledger.findById(id)).filter(Boolean).map(cloneRow);
+    const postageSnap = detachPostageForDeletedSells(idsToDelete);
     Ledger.deleteByIds(idsToDelete);
     save();
     updateKor();
@@ -5719,11 +5968,17 @@ function deleteTransaction(txId) {
     toastUndo('交易紀錄已刪除', {
       restore() {
         Ledger.restoreRecords(snapshot);
+        restorePostageDetach(postageSnap);
         save();
         updateKor();
         refreshCurrentView();
       },
-      discard() { idsToDelete.forEach(id => proofDeleteAll(id)); },
+      discard() {
+        idsToDelete.forEach(id => proofDeleteAll(id));
+        postageSnap.forEach(s => {
+          if (s.remaining.length === 0) proofDeleteAll(s.expense.id);
+        });
+      },
     });
   });
 }
@@ -5789,6 +6044,7 @@ function bulkDeleteTransactions() {
   confirm2(`確認批次刪除已選取的 ${count} 筆交易紀錄？`, ()=>{
     const idsToDelete = Ledger.resolveBulkDeleteIds([..._selectedTxIds]);
     const snapshot = idsToDelete.map(id => Ledger.findById(id)).filter(Boolean).map(cloneRow);
+    const postageSnap = detachPostageForDeletedSells(idsToDelete);
     Ledger.deleteByIds(idsToDelete);
     _selectedTxIds.clear();
     save();
@@ -5797,11 +6053,17 @@ function bulkDeleteTransactions() {
     toastUndo(`已批次刪除 ${idsToDelete.length} 筆交易`, {
       restore() {
         Ledger.restoreRecords(snapshot);
+        restorePostageDetach(postageSnap);
         save();
         updateKor();
         refreshCurrentView();
       },
-      discard() { idsToDelete.forEach(id => proofDeleteAll(id)); },
+      discard() {
+        idsToDelete.forEach(id => proofDeleteAll(id));
+        postageSnap.forEach(s => {
+          if (s.remaining.length === 0) proofDeleteAll(s.expense.id);
+        });
+      },
     });
   });
 }
@@ -6798,6 +7060,7 @@ function toastUndo(msg, { restore, discard }) {
 function wireEvents() {
   setupProofZone('buy');
   setupProofZone('sell');
+  setupProofZone('sellPostage');
   setupProofZone('product');
   setupProofZone('expense');
 
@@ -6862,6 +7125,7 @@ function wireEvents() {
         refreshSellLineProductOptions();
         updateSellCostPreview();
         updateKorCheck();
+        updateSellPostageUI();
       }
       if (targetId === 'buyScope' || targetId === 'pBuyScope') {
         // dual-cost UI already handled in setScopeValue
@@ -6952,6 +7216,12 @@ function wireEvents() {
     const v=q('sellCountry').value;
     q('ossAlert').style.display=(v!=='NL')?'block':'none';
   });
+  q('sellDate')?.addEventListener('change', () => {
+    updateSellPostageUI();
+    updateProfitPreview();
+  });
+  q('sellPostageAmt')?.addEventListener('input', updateProfitPreview);
+  q('sellPostageBtw')?.addEventListener('input', updateProfitPreview);
 
   // Buy modal
   q('buySource').addEventListener('change', updateBuyHint);
@@ -7262,6 +7532,13 @@ async function doTelegramPair() {
   }
 }
 
+function ledgerSeedIds(db) {
+  return {
+    expenses: (db?.expenses || []).map(e => e.id).sort().join(','),
+    documents: (db?.documents || []).map(d => d.id).sort().join(','),
+  };
+}
+
 async function bootLedger() {
   const data = await PokeApi.getLedger();
   const serverHasTx = (data.ledger?.products || []).length > 0 || (data.ledger?.transactions || []).length > 0;
@@ -7274,14 +7551,14 @@ async function bootLedger() {
     _ledgerVersion = saved.version;
     markLocalSynced();
     toast('已把本機帳本匯入後端（一次）。之後以伺服器為準。', 's');
-    return;
+    return false;
   }
   if (isLocalUnsynced() && local) {
     applyLiveDb(hydrateLedger(local));
     _ledgerVersion = data.version || 0;
     const ok = await flushLedgerPut();
     if (ok) toast('已把尚未同步的修改寫回後端', 's');
-    return;
+    return false;
   }
   try {
     if (local && data.ledger && localStorage.getItem(LEDGER_SYNCED_AT_KEY) == null) {
@@ -7295,20 +7572,25 @@ async function bootLedger() {
         _ledgerVersion = data.version || 0;
         const ok = await flushLedgerPut();
         if (ok) toast('已把尚未同步的修改寫回後端', 's');
-        return;
+        return false;
       }
     }
   } catch (e) {}
+  const serverIds = ledgerSeedIds(data.ledger || {});
   applyLiveDb(hydrateLedger(data.ledger || emptyLiveDb()));
   _ledgerVersion = data.version || 0;
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(ledgerPayload(DB))); } catch (e) {}
-  markLocalSynced();
+  const liveIds = ledgerSeedIds(DB);
+  const seeded = serverIds.expenses !== liveIds.expenses || serverIds.documents !== liveIds.documents;
+  if (!seeded) markLocalSynced();
+  return seeded;
 }
 
 async function enterApp() {
   hideLoginGate();
-  await bootLedger();
+  const seeded = await bootLedger();
   _apiReady = true;
+  if (seeded) save();
   updateKor();
   switchTab(currentTab() || 'dashboard');
   await initCloud();

@@ -580,7 +580,7 @@
         <label>銷售品項 <span class="req">*</span></label>
         <div class="sell-lines" id="sellLines"></div>
         <button type="button" class="btn-secondary btn-sm" id="btnAddSellLine">＋ 加一列</button>
-        <p class="field-hint">可一次選多個品相／商品，共用下方日期與平台。</p>
+        <p class="field-hint">可一次選多個品相／商品，共用下方日期與平台。售價請填買家合計（含運費），與 Cardmarket 的 Total 一致；買家付的運費是營業額，不是費用。</p>
       </div>
       <div class="cost-preview" id="sellCostPreview" style="display:none"></div>
       <div class="frow">
@@ -594,12 +594,40 @@
       </div>
       <div class="oss-alert" id="ossAlert" style="display:none">⚠️ 非荷蘭買家：請確認 OSS 跨境 VAT 義務（KOR 不自動涵蓋）。</div>
       <div class="profit-box" id="profitBox">
-        <div class="pb-row"><span>售價（總計）</span><span id="pb-rev">—</span></div>
+        <div class="pb-row"><span>售價（總計／含運費收入）</span><span id="pb-rev">—</span></div>
         <div class="pb-row dim"><span>- 平台手續費</span><span id="pb-fee">—</span></div>
         <div class="pb-row dim"><span>- COGS（加權平均）</span><span id="pb-cogs">—</span></div>
+        <div class="pb-row dim" id="pb-postage-row" hidden><span>- 寄貨成本（商務費用）</span><span id="pb-postage">—</span></div>
         <div class="pb-row total"><span>毛利</span><span id="pb-gp">—</span></div>
       </div>
       <div class="kor-check" id="sellKorCheck"></div>
+      <div id="sellPostageBlock">
+        <input type="hidden" id="sellPostageExpenseId"/>
+        <div class="frow">
+          <div class="fg">
+            <label>寄貨成本（EUR）</label>
+            <input type="number" id="sellPostageAmt" class="finp" placeholder="空白＝不記" min="0" step="0.01"/>
+            <p class="field-hint">選填。你付給郵局／物流的實付，不必等於買家付的運費。空白則不產生費用。</p>
+          </div>
+          <div class="fg" id="sellPostageBtwWrap">
+            <label>寄貨 BTW（EUR） <span class="req">*</span></label>
+            <input type="number" id="sellPostageBtw" class="finp" placeholder="沒有就填 0" min="0" step="0.01"/>
+          </div>
+        </div>
+        <p class="field-hint" id="sellPostageBtwHint"></p>
+        <div class="fg" id="sellPostageProofFg">
+          <label>📎 寄貨憑證（郵局／物流收據，不可用賣出截圖代替）</label>
+          <div class="proof-upload-zone" id="sellPostageProofZone">
+            <input type="file" id="sellPostageProofInput" accept="image/*" multiple/>
+            <label for="sellPostageProofInput" class="proof-upload-label">
+              <span class="upload-ico">🧾</span>
+              <span>點擊上傳收據，或拖曳到此處</span>
+              <span style="font-size:.75rem;opacity:.6">填了寄貨成本就必傳至少一張</span>
+            </label>
+            <div class="proof-thumbs" id="sellPostageProofThumbs"></div>
+          </div>
+        </div>
+      </div>
       <div class="fg"><label>備註</label><input type="text" id="sellNote" class="finp" placeholder="買家、平台訂單號…"/></div>
       <div class="fg">
         <label>📎 憑證圖片（賣出截圖、匯款確認、對話紀錄…）</label>
