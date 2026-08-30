@@ -3755,16 +3755,40 @@ function currentTab() { return document.querySelector('.nav-link.active')?.datas
 // ══════════════════════════════════════════════════════════════
 //  DASHBOARD
 // ══════════════════════════════════════════════════════════════
+/** Homepage / P&L figures are commercial-only — private is excluded from KOR and IB. */
+function commercialYearSells(yr) {
+  return DB.transactions.filter(t => t.type === 'SELL' && inYear(t.date, yr) && txScope(t) === 'biz');
+}
+function commercialYearExpenses(yr) {
+  return (DB.expenses || []).filter(e => inYear(e.date, yr) && !e.isPrivate);
+}
+function commercialInventoryTotals() {
+  let qty = 0, cost = 0;
+  for (const p of DB.products) {
+    qty += getQty(p.id, 'biz');
+    cost += getInventoryCost(p.id, 'biz');
+  }
+  return { qty, cost };
+}
+function commercialGrossProfit(sells) {
+  const revenue = sells.reduce((s, t) => s + t.quantity * (t.pricePerUnitEUR || 0), 0);
+  const cogs = sells.reduce((s, t) => s + cogsForSell(t), 0);
+  const fees = sells.reduce((s, t) => s + (t.fee || 0), 0);
+  const gp = revenue - cogs - fees;
+  return { revenue, cogs, fees, gp, gpm: revenue > 0 ? gp / revenue * 100 : 0 };
+}
+
 function renderDashboard() {
   const yr  = fiscalYear();
   const rev = korRevenue(yr);
   const p   = korPct(yr);
+  const ySells = commercialYearSells(yr);
 
   // KOR hero
   q('korBigVal').textContent     = eur(rev, 0);
   q('korTrackFill').style.width  = p+'%';
   q('korLeft').textContent       = eur(KOR_LIMIT - rev, 0);
-  q('korSales').textContent      = DB.transactions.filter(t=>t.type==='SELL'&&inYear(t.date,yr)).length+' 筆';
+  q('korSales').textContent      = ySells.length+' 筆';
 
   const dot = q('korDot'), cap = q('korCaption'), lbl = q('korStatLabel');
   if (p >= 100) {
@@ -3784,21 +3808,13 @@ function renderDashboard() {
     cap.textContent='✅ 目前安全，還有 '+eur(KOR_LIMIT-rev,0)+' 空間。'; lbl.textContent='✅ 正常';
   }
 
-  // Stats
-  const allStock = DB.products.map(p=>({p, qty:getQty(p.id)}));
-  const totalQty  = allStock.reduce((s,x)=>s+x.qty, 0);
-  const totalCost = allStock.reduce((s,x)=>s+getInventoryCost(x.p.id), 0);
-
-  const ySells = DB.transactions.filter(t=>t.type==='SELL'&&inYear(t.date,yr));
-  const yRev   = ySells.reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0), 0);
-  const yCogs  = ySells.reduce((s,t)=>s+cogsForSell(t), 0);
-  const yFees  = ySells.reduce((s,t)=>s+(t.fee||0), 0);
-  const yGP    = yRev - yCogs - yFees;
-  const yGPM   = yRev>0 ? yGP/yRev*100 : 0;
-  const yExp   = DB.expenses.filter(e=>inYear(e.date,yr)&&!e.isPrivate).reduce((s,e)=>s+expenseNetEur(e),0);
+  // Stats — commercial ledger only (private is not tax-reporting)
+  const { qty: totalQty, cost: totalCost } = commercialInventoryTotals();
+  const { gp: yGP, gpm: yGPM } = commercialGrossProfit(ySells);
+  const yExp = commercialYearExpenses(yr).reduce((s, e) => s + expenseNetEur(e), 0);
 
   q('dTotalQty').textContent   = totalQty+' 張';
-  q('dTotalCost').textContent  = '帳面成本 '+eur(totalCost);
+  q('dTotalCost').textContent  = '商業帳面成本 '+eur(totalCost);
   q('dGP').textContent         = eur(yGP);
   q('dGPM').textContent        = '毛利率 '+pct(yGPM);
   q('dExp').textContent        = eur(yExp);
@@ -3806,9 +3822,9 @@ function renderDashboard() {
   q('dGP').style.color         = yGP >= 0 ? 'var(--green)' : 'var(--red)';
   q('dNet').style.color        = (yGP-yExp) >= 0 ? 'var(--green)' : 'var(--red)';
 
-  // Recent
+  // Recent — commercial only (matches KPI cards / P&L)
   const recent = [
-    ...DB.transactions.map(t=>{
+    ...DB.transactions.filter(t => txScope(t) === 'biz').map(t=>{
       const p = DB.products.find(p=>p.id===t.productId);
       const name = p?.name || '已刪除';
       const sign = t.type==='SELL' ? 1 : -1;
@@ -3903,19 +3919,30 @@ function computeCashFlow(range = _cfRange, scope = _cfScope) {
 
   const sellRows = sells.map(t => {
     const p = DB.products.find(x => x.id === t.productId);
-    const amt = (t.quantity || 0) * (t.pricePerUnitEUR || 0);
-    return { date: t.date, label: p?.name || '已刪除', amt, kind: 'SELL', fee: t.fee || 0 };
+    const qty = t.quantity || 0;
+    const amt = qty * (t.pricePerUnitEUR || 0);
+    return {
+      date: t.date, label: p?.name || '已刪除', amt, qty,
+      productId: t.productId, kind: 'SELL', fee: t.fee || 0, unit: '張',
+    };
   });
   const buyRows = buys.map(t => {
     const p = DB.products.find(x => x.id === t.productId);
-    const amt = (t.quantity || 0) * (t.pricePerUnitEUR || 0);
-    return { date: t.date, label: p?.name || '已刪除', amt, kind: 'BUY' };
+    const qty = t.quantity || 0;
+    const amt = qty * (t.pricePerUnitEUR || 0);
+    return {
+      date: t.date, label: p?.name || '已刪除', amt, qty,
+      productId: t.productId, kind: 'BUY', unit: '張',
+    };
   });
   const expRows = exps.map(e => ({
     date: e.date,
-    label: e.desc || e.category || '費用',
+    label: CAT_LABELS[e.category] || e.desc || e.category || '費用',
     amt: expenseNetEur(e),
+    qty: 1,
     kind: 'EXPENSE',
+    unit: '筆',
+    key: 'exp:' + (e.category || e.desc || 'other'),
   }));
 
   const income = sellRows.reduce((s, r) => s + r.amt, 0);
@@ -3935,6 +3962,37 @@ function computeCashFlow(range = _cfRange, scope = _cfScope) {
   };
 }
 
+/** Collapse cash-flow lines to 品相 + 數量 + 總金額. */
+function groupCashFlowByItem(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    const key = r.productId || r.key || r.label;
+    let cur = map.get(key);
+    if (!cur) {
+      cur = { name: r.label, qty: 0, amt: 0, unit: r.unit || '張' };
+      map.set(key, cur);
+    }
+    cur.qty += Number(r.qty) || 0;
+    cur.amt += Number(r.amt) || 0;
+  }
+  return [...map.values()].sort((a, b) => b.amt - a.amt || String(a.name).localeCompare(String(b.name), 'zh-Hant'));
+}
+
+function cashFlowDetailLines(side, data) {
+  if (side === 'in') return groupCashFlowByItem(data.sellRows);
+  return groupCashFlowByItem([
+    ...data.buyRows,
+    ...data.expRows,
+    ...data.sellRows.filter(r => r.fee > 0).map(r => ({
+      label: '平台手續費',
+      amt: r.fee,
+      qty: 1,
+      unit: '筆',
+      key: '__fee__',
+    })),
+  ]);
+}
+
 function renderCashFlowDetail(side, data) {
   const el = q('cfDetail');
   if (!el) return;
@@ -3948,27 +4006,7 @@ function renderCashFlowDetail(side, data) {
   q('cfBoxOut')?.classList.toggle('active', side === 'out');
   q('cfBoxIn')?.classList.toggle('active', side === 'in');
 
-  let rows = [];
-  if (side === 'in') {
-    rows = data.sellRows.map(r => ({
-      date: r.date,
-      name: r.label,
-      tag: '銷售',
-      amt: r.amt,
-    }));
-  } else {
-    rows = [
-      ...data.buyRows.map(r => ({ date: r.date, name: r.label, tag: '進貨', amt: r.amt })),
-      ...data.expRows.map(r => ({ date: r.date, name: r.label, tag: '費用', amt: r.amt })),
-      ...data.sellRows.filter(r => r.fee > 0).map(r => ({
-        date: r.date,
-        name: `${r.label}（手續費）`,
-        tag: '手續費',
-        amt: r.fee,
-      })),
-    ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  }
-
+  const rows = cashFlowDetailLines(side, data);
   const title = side === 'in' ? '收入明細' : '支出明細';
   const total = side === 'in' ? data.income : data.expense;
   el.hidden = false;
@@ -3977,14 +4015,17 @@ function renderCashFlowDetail(side, data) {
     return;
   }
   el.innerHTML = `<div class="cf-detail-hd"><span>${title}</span><span>${eur(total)}</span></div>` +
-    `<div class="cf-detail-list">${rows.slice(0, 40).map(r => `
+    `<div class="cf-detail-list">
+      <div class="cf-detail-row cf-detail-cols">
+        <span>品相</span><span>數量</span><span>總金額</span>
+      </div>` +
+    rows.map(r => `
       <div class="cf-detail-row">
-        <span class="cf-detail-date">${esc(r.date)}</span>
-        <span class="cf-detail-tag">${esc(r.tag)}</span>
         <span class="cf-detail-name">${esc(r.name)}</span>
+        <span class="cf-detail-qty">${r.qty} ${esc(r.unit)}</span>
         <span class="cf-detail-amt ${side === 'out' ? 'neg' : 'pos'}">${eur(r.amt)}</span>
-      </div>`).join('')}</div>` +
-    (rows.length > 40 ? `<p class="cf-detail-more">僅顯示前 40 筆</p>` : '');
+      </div>`).join('') +
+    `</div>`;
 }
 
 function renderCashFlowCard() {
@@ -4825,13 +4866,9 @@ function renderExpenses() {
 function renderReports() {
   const yr = Number(q('rptYear')?.value||fiscalYear());
   // Business (commercial) only — private transactions excluded from P&L
-  const ySells = DB.transactions.filter(t => t.type==='SELL' && inYear(t.date,yr) && txScope(t)==='biz');
-  const yExp   = DB.expenses.filter(e => inYear(e.date,yr) && !e.isPrivate);
-
-  const rev    = ySells.reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
-  const cogs   = ySells.reduce((s,t)=>s+cogsForSell(t),0);
-  const fees   = ySells.reduce((s,t)=>s+(t.fee||0),0);
-  const grossP = rev - cogs - fees;
+  const ySells = commercialYearSells(yr);
+  const yExp   = commercialYearExpenses(yr);
+  const { revenue: rev, cogs, fees, gp: grossP } = commercialGrossProfit(ySells);
 
   const expBycat = {};
   yExp.forEach(e=>{ expBycat[e.category]=(expBycat[e.category]||0)+expenseNetEur(e); });
@@ -4845,8 +4882,7 @@ function renderReports() {
   const taxEst = aft3*0.3697;
 
   // Commercial inventory only
-  const invCost     = DB.products.reduce((s,p)=>s+getInventoryCost(p.id,'biz'),0);
-  const invQty      = DB.products.reduce((s,p)=>s+getQty(p.id,'biz'),0);
+  const { qty: invQty, cost: invCost } = commercialInventoryTotals();
   const inStockCount= DB.products.filter(p=>getQty(p.id,'biz')>0).length;
 
   const preKorSells = DB.transactions.filter(t => t.type==='SELL' && txScope(t)==='biz' && inPreKorWindow(t.date));

@@ -26,7 +26,7 @@ _Avoid_: treating private acquisition cost as commercial book value
 
 **COGS** — cost of goods sold for a SELL transaction. Snapshotted as `cogsPerUnit` at write time; recalculated when the SELL is edited or when an upstream BUY that affects the same product+scope is edited.
 
-**Commercial inventory** — stock and P&L figures filtered to `scope === 'biz'`. Used for KOR reporting and the business P&L report.
+**Commercial inventory** — stock and P&L figures filtered to `scope === 'biz'`. Used for KOR reporting, the homepage dashboard KPIs, and the business P&L report.
 
 **Private inventory** — stock figures filtered to `scope === 'priv'`. Excluded from KOR and business P&L.
 
