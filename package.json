@@ -6,6 +6,7 @@
     "test": "node scripts/inbox-repro.mjs && node scripts/scope-isolation-repro.mjs && node scripts/sell-scope-lock-repro.mjs && node scripts/multi-sell-repro.mjs && node scripts/inv-type-filter-repro.mjs && node scripts/dashboard-biz-kpis-repro.mjs && node scripts/cashflow-aggregate-repro.mjs && node scripts/margin-btw-repro.mjs"
   },
   "dependencies": {
+    "@vercel/functions": "^2.0.0",
     "postgres": "^3.4.9"
   }
 }

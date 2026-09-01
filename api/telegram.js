@@ -1,4 +1,5 @@
 import { handleUpdate } from '../lib/bot.js';
+import { waitUntil } from '@vercel/functions';
 
 export const config = { maxDuration: 60 };
 
@@ -17,12 +18,19 @@ export default async function handler(req, res) {
       return;
     }
   }
+  let update;
   try {
-    const update = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-    await handleUpdate(update);
+    update = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
   } catch (e) {
-    console.error('[telegram webhook]', e);
+    console.error('[telegram webhook] bad body', e);
+    res.statusCode = 400;
+    res.end('bad request');
+    return;
   }
+  // Ack Telegram immediately so it does not retry while OCR / LLM runs.
   res.statusCode = 200;
   res.end('ok');
+  waitUntil(
+    handleUpdate(update).catch(e => console.error('[telegram webhook]', e)),
+  );
 }
