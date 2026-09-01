@@ -3649,7 +3649,7 @@ function restorePostageDetach(snapshots) {
 function korRevenue(yr) {
   return DB.transactions
     .filter(t => t.type === 'SELL' && inYear(t.date, yr) && txScope(t) === 'biz')
-    .reduce((s, t) => s + t.quantity * (t.pricePerUnitEUR||0), 0);
+    .reduce((s, t) => s + BtwEngine.sellOmzetExclBtw(t), 0);
 }
 function korPct(yr) { return Math.min(korRevenue(yr)/KOR_LIMIT*100, 100); }
 
@@ -3771,11 +3771,13 @@ function commercialInventoryTotals() {
   return { qty, cost };
 }
 function commercialGrossProfit(sells) {
-  const revenue = sells.reduce((s, t) => s + t.quantity * (t.pricePerUnitEUR || 0), 0);
+  const revenueIncl = sells.reduce((s, t) => s + t.quantity * (t.pricePerUnitEUR || 0), 0);
+  const outputBtw = sells.reduce((s, t) => s + BtwEngine.sellOutputBtw(t), 0);
+  const revenue = roundEur(revenueIncl - outputBtw);
   const cogs = sells.reduce((s, t) => s + cogsForSell(t), 0);
   const fees = sells.reduce((s, t) => s + (t.fee || 0), 0);
   const gp = revenue - cogs - fees;
-  return { revenue, cogs, fees, gp, gpm: revenue > 0 ? gp / revenue * 100 : 0 };
+  return { revenue, revenueIncl, outputBtw, cogs, fees, gp, gpm: revenue > 0 ? gp / revenue * 100 : 0 };
 }
 
 function renderDashboard() {
@@ -4538,7 +4540,7 @@ function renderDetailTransactions(productId, scope) {
     <table class="tx-table detail-tx-table">
       <thead><tr>
         <th>日期</th><th>類型</th><th>帳戶</th><th>數量</th><th>單價</th>
-        <th>金額</th><th>平台/來源</th><th>手續費</th><th>備註</th><th></th>
+        <th>金額</th><th>銷項 BTW</th><th>平台/來源</th><th>手續費</th><th>備註</th><th></th>
       </tr></thead>
       <tbody>${txns.map(t => {
         const isSell = t.type === 'SELL';
@@ -4546,6 +4548,8 @@ function renderDetailTransactions(productId, scope) {
         const sc = ScopeLedger.normalizeScope(t, DB.transactions);
         const scLabel = sc === 'biz' ? '🏢 商業' : '👤 私人';
         const paired = t.pairId ? ' · 有配對' : '';
+        const outputBtw = isSell ? BtwEngine.sellOutputBtw(t) : 0;
+        const btwCell = !isSell ? '—' : (t.btwCharged || outputBtw ? eur(outputBtw) : '未計');
         return `<tr class="detail-tx-row" data-id="${t.id}" title="點擊編輯此筆交易">
           <td class="mono">${t.date}</td>
           <td>${txBadge(t.type)}</td>
@@ -4553,6 +4557,7 @@ function renderDetailTransactions(productId, scope) {
           <td class="mono">${t.quantity}</td>
           <td class="mono">${eur(t.pricePerUnitEUR || 0)}</td>
           <td class="amount ${isSell ? 'sell' : 'buy'}">${isSell ? '+' : '−'}${eur(total)}</td>
+          <td class="mono">${btwCell}</td>
           <td>${esc(platformLabel(t.platform))}</td>
           <td class="mono">${isSell ? eur(t.fee || 0) : '—'}</td>
           <td class="tx-note-cell" title="${esc(t.note || '')}">${esc(t.note || '—')}</td>
@@ -4662,7 +4667,7 @@ function renderTxTableForScope(scopeKey, rows) {
         <td class="col-type">${txBadge(t.type)}</td>
         <td class="col-product"><span class="tx-product-name" title="${esc(r.productName)}">${esc(r.productName)}</span></td>
         <td class="mono col-qty">${t.quantity}</td>
-        <td class="amount col-amt ${r.isSell?'sell':'buy'}">${r.isSell?'':'−'}${eur(r.total)}</td>
+        <td class="amount col-amt ${r.isSell?'sell':'buy'}">${r.isSell?'':'−'}${eur(r.total)}${r.isSell && BtwEngine.sellOutputBtw(t) ? `<div class="tx-btw-note">BTW ${eur(BtwEngine.sellOutputBtw(t))}</div>` : ''}</td>
         <td class="col-actions">
           <div class="tx-actions">
             <button class="btn-icon-sm btn-edit-tx" data-id="${t.id}" title="編輯">✏️</button>
@@ -4868,7 +4873,7 @@ function renderReports() {
   // Business (commercial) only — private transactions excluded from P&L
   const ySells = commercialYearSells(yr);
   const yExp   = commercialYearExpenses(yr);
-  const { revenue: rev, cogs, fees, gp: grossP } = commercialGrossProfit(ySells);
+  const { revenue: rev, revenueIncl, outputBtw, cogs, fees, gp: grossP } = commercialGrossProfit(ySells);
 
   const expBycat = {};
   yExp.forEach(e=>{ expBycat[e.category]=(expBycat[e.category]||0)+expenseNetEur(e); });
@@ -4887,14 +4892,17 @@ function renderReports() {
 
   const preKorSells = DB.transactions.filter(t => t.type==='SELL' && txScope(t)==='biz' && inPreKorWindow(t.date));
   const preKorRev = preKorSells.reduce((s,t)=>s+t.quantity*(t.pricePerUnitEUR||0),0);
+  const preKorOutputBtw = preKorSells.reduce((s, t) => s + BtwEngine.sellOutputBtw(t), 0);
   const voorbelasting = DB.expenses.filter(e => inYear(e.date, yr) && isVoorbelasting(e)).reduce((s,e)=>s+expenseBtwEur(e),0);
+  const teBetalen = roundEur(preKorOutputBtw - voorbelasting);
   const preKorLabel = `${companyStartDate()} ～ ${korStartDate()} 前一日`;
 
   q('rptContent').innerHTML = `
   <div class="panel rpt-section">
     <div class="rpt-title">📊 損益表 Winst- en Verliesrekening · ${yr} <span style="font-size:.78rem;font-weight:normal;color:var(--t2)">(🏢 商業帳戶專用)</span></div>
-    <div class="pl-row subtotal"><span>📈 營業額（Omzet）</span><span class="pl-val">${eur(rev)}</span></div>
+    <div class="pl-row subtotal"><span>📈 營業額（Omzet，未稅）</span><span class="pl-val">${eur(rev)}</span></div>
     <div class="pl-row indent"><span>商業銷售筆數：${ySells.length} 筆</span></div>
+    ${outputBtw ? `<div class="pl-row indent"><span>含稅實收 ${eur(revenueIncl)}，其中銷項 BTW ${eur(outputBtw)}</span></div>` : ''}
     <div class="pl-row indent"><span>— 售出成本（COGS，加權平均）</span><span class="pl-val neg">-${eur(cogs)}</span></div>
     <div class="pl-row indent"><span>— 平台手續費</span><span class="pl-val neg">-${eur(fees)}</span></div>
     <div class="pl-row subtotal" style="margin-top:.25rem"><span>💰 毛利（Brutowinst）</span><span class="pl-val ${grossP>=0?'pos':'neg'}">${eur(grossP)}</span></div>
@@ -4924,9 +4932,11 @@ function renderReports() {
   <div class="panel rpt-section">
     <div class="rpt-title">🧾 KOR 前 BTW 底稿（Omzetbelasting）· ${yr}</div>
     <div class="pl-row"><span>應稅期間</span><span class="pl-val" style="font-size:.85rem">${esc(preKorLabel)}</span></div>
-    <div class="pl-row"><span>期間內商業銷售（帳上 omzet）</span><span class="pl-val">${eur(preKorRev)} · ${preKorSells.length} 筆</span></div>
+    <div class="pl-row"><span>期間內商業銷售（含稅實收）</span><span class="pl-val">${eur(preKorRev)} · ${preKorSells.length} 筆</span></div>
+    <div class="pl-row"><span>應納 BTW（邊際利潤制）</span><span class="pl-val">${eur(preKorOutputBtw)}</span></div>
     <div class="pl-row"><span>進項 BTW（voorbelasting）</span><span class="pl-val pos">${eur(voorbelasting)}</span></div>
-    <p style="font-size:.7rem;color:var(--t3);margin-top:.65rem">10/1 起才適用 KOR。這段期間的商業銷售要報 omzetbelasting；進項 BTW 可扣。損益表費用已用未稅金額。銷售若售價含稅，申報時用 21/121 拆稅；若未稅則 ×21%。</p>
+    <div class="pl-row grand"><span>${teBetalen >= 0 ? '應繳 BTW' : '應退 BTW'}</span><span class="pl-val ${teBetalen > 0 ? 'neg' : 'pos'}">${eur(Math.abs(teBetalen))}</span></div>
+    <p style="font-size:.7rem;color:var(--t3);margin-top:.65rem">10/1 起才適用 KOR。這段期間的商業銷售要報 omzetbelasting。銷項用邊際利潤制：max(0, 售價−成本)×21/121，可在銷售紀錄裡勾選並改數字。進項 BTW 可扣。損益表營業額為未稅（已扣銷項 BTW）。</p>
   </div>`;
 }
 
@@ -5499,6 +5509,7 @@ q('btnSaveBuy').addEventListener('click', ()=>{
 //  MODAL — RECORD SELL
 // ══════════════════════════════════════════════════════════════
 let _sellScopeLock = null; // 'priv' | 'biz' | null — lock when opened from inventory tab
+let _sellBtwDirty = false;
 
 function sellFormScope() {
   return q('sellScope')?.value || 'biz';
@@ -5544,7 +5555,7 @@ function updateSellLinesChrome() {
 function wireSellLine(row) {
   row.querySelector('.sell-line-product')?.addEventListener('change', updateSellCostPreview);
   row.querySelector('.sell-line-qty')?.addEventListener('input', () => { updateSellCostPreview(); updateKorCheck(); });
-  row.querySelector('.sell-line-price')?.addEventListener('input', () => { updateProfitPreview(); updateKorCheck(); });
+  row.querySelector('.sell-line-price')?.addEventListener('input', () => { updateSellBtwUI(); updateProfitPreview(); updateKorCheck(); });
   row.querySelector('.sell-line-fee')?.addEventListener('input', updateProfitPreview);
   row.querySelector('.sell-line-remove')?.addEventListener('click', () => {
     const lines = q('sellLines').querySelectorAll('.sell-line');
@@ -5596,9 +5607,78 @@ function refreshSellLineProductOptions() {
   });
 }
 
+function defaultSellBtwCharged(editTx, scope, date) {
+  if (scope !== 'biz') return false;
+  if (editTx) {
+    if (editTx.btwCharged === true) return true;
+    if (editTx.btwCharged === false) return false;
+    return (Number(editTx.btwEur) || 0) > 0;
+  }
+  return isPreKorDate(date);
+}
+
+function sellFormSuggestedBtw() {
+  const date = q('sellDate')?.value || today();
+  const scope = sellFormScope();
+  let total = 0;
+  for (const l of collectSellLines()) {
+    if (!l.productId || !(l.qty > 0) || isNaN(l.price)) continue;
+    const rev = (l.price || 0) * l.qty;
+    const cogs = computeCogs(l.productId, date, l.qty, scope);
+    total += BtwEngine.suggestedMarginBtw(rev, cogs);
+  }
+  return BtwEngine.roundEur(total);
+}
+
+function sellFormBtwAmounts(scopeVal, date) {
+  const lines = collectSellLines();
+  const suggested = lines.map(l => {
+    if (!l.productId || !(l.qty > 0) || isNaN(l.price)) return 0;
+    return BtwEngine.suggestedMarginBtw(l.price * l.qty, computeCogs(l.productId, date, l.qty, scopeVal));
+  });
+  const charged = scopeVal === 'biz' && !!q('sellBtwCharged')?.checked;
+  const raw = q('sellBtwAmt')?.value;
+  const overridden = charged && _sellBtwDirty && raw != null && String(raw).trim() !== ''
+    ? parseFloat(raw)
+    : null;
+  return {
+    charged,
+    suggested,
+    overridden,
+    amounts: BtwEngine.allocateBtw(suggested, charged, Number.isFinite(overridden) ? overridden : null),
+  };
+}
+
+function updateSellBtwUI() {
+  const block = q('sellBtwBlock');
+  if (!block) return;
+  const biz = sellFormScope() === 'biz';
+  block.hidden = !biz;
+  if (!biz) return;
+  const chargedEl = q('sellBtwCharged');
+  const charged = !!chargedEl?.checked;
+  const amt = q('sellBtwAmt');
+  if (amt) amt.disabled = !charged;
+  const suggested = sellFormSuggestedBtw();
+  if (amt) {
+    if (!charged) amt.value = '';
+    else if (!_sellBtwDirty) amt.value = suggested ? String(suggested) : '0';
+  }
+  const date = q('sellDate')?.value;
+  const preKor = !!(date && isPreKorDate(date));
+  const hint = q('sellBtwHint');
+  if (hint) {
+    hint.textContent = preKor
+      ? `邊際利潤制：建議 ${eur(suggested)}（max(0, 售價−成本)×21/121）。勾選後會自動填，仍可改。`
+      : `KOR 期間通常免收 BTW。若這筆仍要報，勾選後建議 ${eur(suggested)}，可自行改數字。`;
+  }
+}
+
 function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
   const editTx = editTxId ? Ledger.findById(editTxId) : null;
   q('sellEditId').value = editTxId||'';
+  if (q('mSellTitle')) q('mSellTitle').textContent = editTx ? '💰 編輯銷售' : '💰 記錄銷售';
+  if (q('btnSaveSell')) q('btnSaveSell').textContent = editTx ? '更新銷售' : '確認記錄銷售';
 
   const tab = currentTab();
   let scopeVal = editTx ? ScopeLedger.uiScopeForTx(editTx) : (presetScope === 'all' ? 'biz' : presetScope);
@@ -5637,9 +5717,18 @@ function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
     q('sellPostageAmt').value = postageExp ? String(expensePaidEur(postageExp)) : '';
   }
   if (q('sellPostageBtw')) {
-    q('sellPostageBtw').value = postageExp && expenseBtwEur(postageExp)
-      ? String(expenseBtwEur(postageExp))
-      : '';
+    q('sellPostageBtw').value = postageExp ? String(expenseBtwEur(postageExp)) : '';
+  }
+  _sellBtwDirty = false;
+  const charged = defaultSellBtwCharged(editTx, scopeVal, q('sellDate').value);
+  if (q('sellBtwCharged')) q('sellBtwCharged').checked = charged;
+  if (editTx && charged && q('sellBtwAmt')) {
+    const saved = Number(editTx.btwEur) || 0;
+    q('sellBtwAmt').value = String(saved);
+    // Keep the stored amount if the owner previously overrode the suggestion.
+    if (BtwEngine.roundEur(saved) !== sellFormSuggestedBtw()) _sellBtwDirty = true;
+  } else if (q('sellBtwAmt')) {
+    q('sellBtwAmt').value = '';
   }
   // Clear staged images and load existing if editing
   proofStageClear('sell');
@@ -5653,6 +5742,7 @@ function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
     proofGetAll(postageExp.id).then(recs => renderProofThumbs('sellPostage', recs));
   }
   updateSellCostPreview();
+  updateSellBtwUI();
   updateKorCheck();
   updateSellPostageUI();
   openModal('mSell');
@@ -5683,6 +5773,7 @@ function updateSellScopeUI() {
     }
   }
   updateSellPostageUI();
+  updateSellBtwUI();
 }
 
 function updateSellPostageUI() {
@@ -5709,6 +5800,7 @@ function updateSellCostPreview() {
   if (!preview) return;
   if (!lines.length) {
     preview.style.display = 'none';
+    updateSellBtwUI();
     updateProfitPreview();
     updateKorCheck();
     return;
@@ -5722,6 +5814,7 @@ function updateSellCostPreview() {
   });
   preview.style.display = 'block';
   preview.innerHTML = parts.join('<br>') + ` · ${scope === 'priv' ? '👤 私人' : '🏢 商業'}`;
+  updateSellBtwUI();
   updateProfitPreview();
   updateKorCheck();
 }
@@ -5749,7 +5842,12 @@ function updateProfitPreview() {
   const postageRow = q('pb-postage-row');
   if (postageRow) postageRow.hidden = !postageOn;
   if (q('pb-postage')) q('pb-postage').textContent = postageOn ? eur(postageIb) : '—';
-  const gp = rev - fee - cogs - postageIb;
+  const charged = sellFormScope() === 'biz' && !!q('sellBtwCharged')?.checked;
+  const sellBtw = charged ? (parseFloat(q('sellBtwAmt')?.value) || 0) : 0;
+  const btwRow = q('pb-btw-row');
+  if (btwRow) btwRow.hidden = !charged;
+  if (q('pb-btw')) q('pb-btw').textContent = charged ? eur(sellBtw) : '—';
+  const gp = rev - fee - cogs - postageIb - sellBtw;
   q('pb-rev').textContent  = eur(rev);
   q('pb-fee').textContent  = eur(fee);
   q('pb-cogs').textContent = any ? eur(cogs) : '—';
@@ -5774,7 +5872,8 @@ function updateKorCheck() {
     return;
   }
   if (!revAdd) { el.className = 'kor-check'; el.textContent = ''; return; }
-  const newRev = korRevenue(fiscalYear()) + revAdd;
+  const btwAdd = q('sellBtwCharged')?.checked ? (parseFloat(q('sellBtwAmt')?.value) || 0) : 0;
+  const newRev = korRevenue(fiscalYear()) + revAdd - btwAdd;
   if (newRev > KOR_LIMIT) {
     el.className = 'kor-check danger';
     el.textContent = `🚨 此筆後年度 KOR 達 ${eur(newRev)}，超過上限 €20,000！先別急著賣——跟我說，我們一起處理 BTW。`;
@@ -5849,8 +5948,17 @@ q('btnSaveSell').addEventListener('click', async ()=>{
   }
 
   const revAdd = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  const btwPlan = sellFormBtwAmounts(scopeVal, date);
+  if (btwPlan.charged && btwPlan.overridden != null && (isNaN(btwPlan.overridden) || btwPlan.overridden < 0)) {
+    return toast('銷項 BTW 金額不合理','e');
+  }
+  const btwTotal = btwPlan.amounts.reduce((s, n) => s + n, 0);
+  if (btwPlan.charged && btwTotal > revAdd + 0.001) {
+    return toast('銷項 BTW 不能大於售價','e');
+  }
+
+  const newRev = korRevenue(fiscalYear()) + revAdd - btwTotal;
   if (scopeVal === 'biz' || (editId && txScope(Ledger.findById(editId)) === 'biz')) {
-    const newRev = korRevenue(fiscalYear()) + revAdd;
     if (newRev > KOR_LIMIT) {
       const ok = await confirm2Async(`🚨 KOR 超限警告\n\n此筆銷售後年度營業額將達 ${eur(newRev)}，超過 €20,000 KOR 上限。\n\n超限後通常要開始收 BTW。確定仍要記錄這筆嗎？`, '仍要記錄');
       if (!ok) return;
@@ -5875,13 +5983,16 @@ q('btnSaveSell').addEventListener('click', async ()=>{
         productId: l.productId,
         quantity: l.qty,
         pricePerUnitEUR: l.price,
+        btwCharged: btwPlan.charged,
+        btwEur: btwPlan.amounts[0] || 0,
         ...shared,
       },
     });
     allIds.push(...ids);
     totalQty = l.qty;
   } else {
-    for (const l of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
       const { ids } = Ledger.recordSell({
         scopeInput: scopeVal,
         editId: null,
@@ -5890,6 +6001,8 @@ q('btnSaveSell').addEventListener('click', async ()=>{
           productId: l.productId,
           quantity: l.qty,
           pricePerUnitEUR: l.price,
+          btwCharged: btwPlan.charged,
+          btwEur: btwPlan.amounts[i] || 0,
           ...shared,
         },
       });
@@ -5940,12 +6053,13 @@ q('btnSaveSell').addEventListener('click', async ()=>{
     const where = scopeVal === 'priv' ? '私人帳（不計 KOR）' : '商業帳（計入 KOR）';
     const lineN = lines.length;
     const postageNote = postagePlan.mode === 'save' ? ' · 已記寄貨費用' : '';
+    const btwNote = btwPlan.charged ? ` · 銷項 BTW ${eur(btwTotal)}` : '';
     toast(
       editId
-        ? `銷售紀錄已更新（${where}${postageNote}）`
+        ? `銷售紀錄已更新（${where}${postageNote}${btwNote}）`
         : (lineN > 1
-          ? `銷售 ${lineN} 筆 × ${totalQty} 張已記入${where}${postageNote}`
-          : `銷售 × ${totalQty} 已記入${where}${postageNote}`),
+          ? `銷售 ${lineN} 筆 × ${totalQty} 張已記入${where}${postageNote}${btwNote}`
+          : `銷售 × ${totalQty} 已記入${where}${postageNote}${btwNote}`),
       's'
     );
   }
@@ -7162,6 +7276,7 @@ function wireEvents() {
         updateSellCostPreview();
         updateKorCheck();
         updateSellPostageUI();
+        updateSellBtwUI();
       }
       if (targetId === 'buyScope' || targetId === 'pBuyScope') {
         // dual-cost UI already handled in setScopeValue
@@ -7254,10 +7369,22 @@ function wireEvents() {
   });
   q('sellDate')?.addEventListener('change', () => {
     updateSellPostageUI();
+    updateSellBtwUI();
     updateProfitPreview();
   });
   q('sellPostageAmt')?.addEventListener('input', updateProfitPreview);
   q('sellPostageBtw')?.addEventListener('input', updateProfitPreview);
+  q('sellBtwCharged')?.addEventListener('change', () => {
+    _sellBtwDirty = false;
+    updateSellBtwUI();
+    updateProfitPreview();
+    updateKorCheck();
+  });
+  q('sellBtwAmt')?.addEventListener('input', () => {
+    _sellBtwDirty = true;
+    updateProfitPreview();
+    updateKorCheck();
+  });
 
   // Buy modal
   q('buySource').addEventListener('change', updateBuyHint);

@@ -564,7 +564,7 @@
 <!-- Record SELL -->
 <div class="modal-overlay" id="mSell">
   <div class="modal modal-lg">
-    <div class="mhd"><h2>💰 記錄銷售</h2><button class="mclose" data-close="mSell">&times;</button></div>
+    <div class="mhd"><h2 id="mSellTitle">💰 記錄銷售</h2><button class="mclose" data-close="mSell">&times;</button></div>
     <div class="mbd">
       <input type="hidden" id="sellEditId"/>
       <div class="fg">
@@ -598,7 +598,20 @@
         <div class="pb-row dim"><span>- 平台手續費</span><span id="pb-fee">—</span></div>
         <div class="pb-row dim"><span>- COGS（加權平均）</span><span id="pb-cogs">—</span></div>
         <div class="pb-row dim" id="pb-postage-row" hidden><span>- 寄貨成本（商務費用）</span><span id="pb-postage">—</span></div>
+        <div class="pb-row dim" id="pb-btw-row" hidden><span>- 應納 BTW（邊際利潤）</span><span id="pb-btw">—</span></div>
         <div class="pb-row total"><span>毛利</span><span id="pb-gp">—</span></div>
+      </div>
+      <div id="sellBtwBlock">
+        <label class="radio-opt sell-btw-check">
+          <input type="checkbox" id="sellBtwCharged"/> 這筆要計入銷項 BTW（邊際利潤制）
+        </label>
+        <div class="frow" id="sellBtwAmtWrap">
+          <div class="fg">
+            <label>銷項 BTW（EUR）</label>
+            <input type="number" id="sellBtwAmt" class="finp" placeholder="勾選後自動填入，可改" min="0" step="0.01"/>
+            <p class="field-hint" id="sellBtwHint"></p>
+          </div>
+        </div>
       </div>
       <div class="kor-check" id="sellKorCheck"></div>
       <div id="sellPostageBlock">
@@ -794,6 +807,7 @@
 <script src="scope.js"></script>
 <script src="valuation.js"></script>
 <script src="ledger.js"></script>
+<script src="btw.js"></script>
 <script src="client-api.js"></script>
 <script src="app.js"></script>
 </body>

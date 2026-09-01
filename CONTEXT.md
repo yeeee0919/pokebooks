@@ -69,6 +69,15 @@ _Avoid_: using KOR start as the opening-inventory transfer date
 **Pre-KOR BTW period** — from company start up to (but not including) KOR start. Commercial sales in this window must be filed on the omzetbelasting return; reclaimable input VAT is recorded on business expenses.
 _Avoid_: assuming no quarterly BTW filing in the founding year
 
+**Margeregeling** (邊際利潤制) — VAT on used goods: output VAT is due on the profit margin of a commercial SELL (selling price minus commercial COGS), not on the full selling price.
+_Avoid_: charging 21% on full omzet; treating platform fees as purchase price
+
+**Verschuldigde BTW** (銷項 BTW) — output VAT recorded on a commercial SELL. Separate from voorbelasting on expenses and from postage BTW.
+_Avoid_: mixing sales VAT into expense / postage BTW
+
+**Sales BTW charged** — whether a commercial SELL is included on the omzetbelasting return. Unchecked means no output VAT (KOR period, export, or the owner turned it off).
+_Avoid_: inferring “no VAT” only from a €0 amount (a zero margin can still be charged)
+
 ## Expenses
 
 **Business expense** — a commercial Kosten entry (`isPrivate === false`). Hits business P&L and IB. Private expenses do not.

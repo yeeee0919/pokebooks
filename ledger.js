@@ -106,6 +106,8 @@ const TransactionLedger = {
         const updates = { ...base, fee: feeEach };
         ScopeLedger.applyPairedEdit(txns(), editId, updates);
         const edited = findById(editId);
+        if ('btwCharged' in fields) edited.btwCharged = !!fields.btwCharged;
+        if ('btwEur' in fields) edited.btwEur = Number(fields.btwEur) || 0;
         valuation.recalcSellCogs(edited);
         if (paired?.type === 'SELL') valuation.recalcSellCogs(paired);
         valuation.onTransactionMutated(edited, Object.keys(updates));

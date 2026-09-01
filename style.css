@@ -1077,6 +1077,9 @@ input, select { font-family: var(--font); }
 .radio-g { display: flex; gap: 1.2rem; }
 .radio-opt { display: flex; align-items: center; gap: .38rem; font-size: .78rem; color: var(--t2); cursor: pointer; }
 .radio-opt input { accent-color: var(--gold); }
+.sell-btw-check { margin: .55rem 0 .35rem; font-weight: 600; color: var(--t1); }
+#sellBtwAmt:disabled { opacity: .55; }
+.tx-btw-note { font-size: .65rem; font-weight: 500; color: var(--t3); margin-top: .12rem; }
 
 /* ─── SCOPE BUTTON GROUP ─── */
 .scope-btns {
