@@ -200,6 +200,15 @@ async function run() {
   assert(summary.includes('Telegram 不能改'), 'no edit after post');
   assert(summary.includes('直接說') || summary.includes('台幣'), 'confirm hints corrections');
 
+  d = newDraft('d-zero');
+  d.fields = {
+    kind: 'EXPENSE', scope: 'biz', date: '2026-08-14',
+    amountEur: 0, desc: 'test', category: 'equipment', btwAnswered: true, btwEur: 0,
+  };
+  assert(!canPost(d.fields, settings), 'zero amount cannot post');
+  const zeroPost = postDraftToLedger({ products: [], transactions: [], expenses: [], documents: [], settings }, d);
+  assert(!zeroPost.ok, 'zero amount post rejected');
+
   console.log('inbox-repro: ok');
 }
 
