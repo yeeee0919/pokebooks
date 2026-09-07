@@ -5434,16 +5434,67 @@ function updateDualCostUI(which) {
   if (hint) hint.style.display = isBiz ? '' : 'none';
 }
 
-function openModalBuy(presetProductId=null, editTxId=null, presetScope='biz') {
+function setBuyProductMode(mode) {
+  const next = mode === 'new' ? 'new' : 'existing';
+  const modeEl = q('buyProductMode');
+  if (modeEl) modeEl.value = next;
+  const existing = q('buyExistingProductWrap');
+  const neu = q('buyNewProductWrap');
+  if (existing) existing.hidden = next === 'new';
+  if (neu) neu.hidden = next !== 'new';
+  if (next === 'new') {
+    const parentSel = q('buyNewParent');
+    if (parentSel) {
+      parentSel.innerHTML = '<option value="">— 無（獨立商品）—</option>' +
+        DB.products.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    }
+    q('buyNewName')?.focus();
+  }
+}
+
+function fillBuyProductSelect(presetProductId = null) {
   const sel = q('buyProductId');
+  if (!sel) return;
   sel.innerHTML = '<option value="">— 選擇商品 —</option>' +
-    DB.products.map(p=>`<option value="${p.id}"${p.id===presetProductId?' selected':''}>${esc(p.name)} (${p.type})</option>`).join('');
+    DB.products.map(p =>
+      `<option value="${p.id}"${p.id === presetProductId ? ' selected' : ''}>${esc(p.name)} (${p.type})</option>`
+    ).join('');
+}
+
+function createProductFromBuyForm(cost) {
+  const name = q('buyNewName')?.value.trim() || '';
+  if (!name) {
+    toast('請輸入新品相名稱', 'e');
+    return null;
+  }
+  const dup = DB.products.find(p => String(p.name || '').trim() === name);
+  if (dup) {
+    toast(`「${name}」已存在，請改選既有商品或換名稱`, 'e');
+    return null;
+  }
+  const product = {
+    id: uid(),
+    name,
+    type: q('buyNewType')?.value || '單卡',
+    language: q('buyNewLang')?.value || '英文',
+    marketPriceEUR: Number.isFinite(cost) ? cost : 0,
+    parentId: q('buyNewParent')?.value || undefined,
+  };
+  DB.products.push(product);
+  return product;
+}
+
+function openModalBuy(presetProductId=null, editTxId=null, presetScope='biz') {
+  fillBuyProductSelect(presetProductId);
   q('buyQty').value    = '';
   q('buyCost').value   = '';
   if (q('buyPrivCost')) q('buyPrivCost').value = '';
   q('buyDate').value   = today();
   q('buySource').value = 'nl_inperson';
   q('buyCurrency').value='EUR';
+  if (q('buyNewName')) q('buyNewName').value = '';
+  if (q('buyNewType')) q('buyNewType').value = '單卡';
+  if (q('buyNewLang')) q('buyNewLang').value = '英文';
 
   let scopeVal = presetScope === 'all' ? 'biz' : presetScope;
   if (editTxId) {
@@ -5461,6 +5512,9 @@ function openModalBuy(presetProductId=null, editTxId=null, presetScope='biz') {
   if (editTxId) {
     proofGetAll(editTxId).then(recs => renderProofThumbs('buy', recs));
   }
+  const newBtn = q('btnBuyNewProduct');
+  if (newBtn) newBtn.hidden = !!editTxId;
+  setBuyProductMode('existing');
   updateBuyHint();
   openModal('mBuy');
 }
@@ -5496,11 +5550,12 @@ function updateProductBuyHint() {
 
 q('btnSaveBuy').addEventListener('click', ()=>{
   const editId = q('buyEditId').value;
-  const productId = q('buyProductId').value;
+  const isNewProduct = !editId && q('buyProductMode')?.value === 'new';
+  let productId = q('buyProductId').value;
   const qty  = parseInt(q('buyQty').value);
   const cost = parseFloat(q('buyCost').value);
   const date = q('buyDate').value;
-  if (!productId) return toast('請選擇商品','e');
+  if (!isNewProduct && !productId) return toast('請選擇商品','e');
   if (!qty||qty<1) return toast('請輸入數量','e');
   if (isNaN(cost)||cost<0) return toast('請輸入成本','e');
   if (!date) return toast('請選擇日期','e');
@@ -5510,6 +5565,13 @@ q('btnSaveBuy').addEventListener('click', ()=>{
   const privCost = privRaw === '' || privRaw == null ? null : parseFloat(privRaw);
   if (scopeVal === 'biz' && privCost != null && (isNaN(privCost) || privCost < 0)) {
     return toast('私人成本請輸入有效數字','e');
+  }
+
+  let createdProduct = null;
+  if (isNewProduct) {
+    createdProduct = createProductFromBuyForm(cost);
+    if (!createdProduct) return;
+    productId = createdProduct.id;
   }
 
   // When editing a priv-only / priv-side row, buyCost is that side's cost only
@@ -5546,7 +5608,11 @@ q('btnSaveBuy').addEventListener('click', ()=>{
   proofCommitToIds('buy', ids).then(() => {
     closeModal('mBuy');
     refreshCurrentView();
-    toast(editId ? '進貨紀錄已更新' : `進貨 × ${qty} 張已記錄`, 's');
+    if (createdProduct) {
+      toast(`已建立「${createdProduct.name}」並記錄進貨 × ${qty}`, 's');
+    } else {
+      toast(editId ? '進貨紀錄已更新' : `進貨 × ${qty} 張已記錄`, 's');
+    }
   });
 });
 
@@ -7469,6 +7535,8 @@ function wireEvents() {
   q('buyCurrency').addEventListener('change', ()=>{
     q('buyFxGroup').style.display=q('buyCurrency').value!=='EUR'?'flex':'none';
   });
+  q('btnBuyNewProduct')?.addEventListener('click', () => setBuyProductMode('new'));
+  q('btnBuyPickExisting')?.addEventListener('click', () => setBuyProductMode('existing'));
 
   // Product modal currency
   q('pBuySource')?.addEventListener('change', updateProductBuyHint);

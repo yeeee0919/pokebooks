@@ -1063,7 +1063,17 @@ input, select { font-family: var(--font); }
 .btn-ghost:hover { color: var(--t1); }
 .btn-danger { background: var(--red); color: #fff; font-size: .78rem; font-weight: 800; padding: .42rem .95rem; border-radius: var(--r1); }
 .btn-danger:hover { background: #dc2626; }
-.btn-sm { padding: .3rem .65rem; font-size: .72rem; }
+.buy-product-row {
+  display: flex;
+  gap: .45rem;
+  align-items: stretch;
+}
+.buy-product-row .finp { flex: 1; min-width: 0; }
+.buy-product-row .btn-sm {
+  flex-shrink: 0;
+  white-space: nowrap;
+  align-self: stretch;
+}
 
 /* ─── FORMS ─── */
 .fg { display: flex; flex-direction: column; gap: .28rem; }
