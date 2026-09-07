@@ -3944,25 +3944,27 @@ function computeCashFlow(range = _cfRange, scope = _cfScope) {
     cashFlowDateInRange(e.date, range) && cashFlowMatchesScope(e, 'expense', scope)
   );
 
-  const sellRows = sells.map(t => {
+  const sellRows = sells.map((t, i) => {
     const p = DB.products.find(x => x.id === t.productId);
     const qty = t.quantity || 0;
     const amt = qty * (t.pricePerUnitEUR || 0);
     return {
       date: t.date, label: p?.name || '已刪除', amt, qty,
       productId: t.productId, kind: 'SELL', fee: t.fee || 0, unit: '張',
+      _i: i,
     };
   });
-  const buyRows = buys.map(t => {
+  const buyRows = buys.map((t, i) => {
     const p = DB.products.find(x => x.id === t.productId);
     const qty = t.quantity || 0;
     const amt = qty * (t.pricePerUnitEUR || 0);
     return {
       date: t.date, label: p?.name || '已刪除', amt, qty,
       productId: t.productId, kind: 'BUY', unit: '張',
+      _i: i,
     };
   });
-  const expRows = exps.map(e => ({
+  const expRows = exps.map((e, i) => ({
     date: e.date,
     label: CAT_LABELS[e.category] || e.desc || e.category || '費用',
     amt: expenseNetEur(e),
@@ -3970,6 +3972,7 @@ function computeCashFlow(range = _cfRange, scope = _cfScope) {
     kind: 'EXPENSE',
     unit: '筆',
     key: 'exp:' + (e.category || e.desc || 'other'),
+    _i: i,
   }));
 
   const income = sellRows.reduce((s, r) => s + r.amt, 0);
@@ -3989,20 +3992,37 @@ function computeCashFlow(range = _cfRange, scope = _cfScope) {
   };
 }
 
-/** Collapse cash-flow lines to 品相 + 數量 + 總金額. */
+/** Collapse cash-flow lines to 品相 + 數量 + 總金額; newest activity first. */
 function groupCashFlowByItem(rows) {
   const map = new Map();
-  for (const r of rows) {
+  rows.forEach((r, i) => {
     const key = r.productId || r.key || r.label;
+    const idx = r._i != null ? r._i : i;
     let cur = map.get(key);
     if (!cur) {
-      cur = { name: r.label, qty: 0, amt: 0, unit: r.unit || '張' };
+      cur = {
+        name: r.label,
+        qty: 0,
+        amt: 0,
+        unit: r.unit || '張',
+        latestDate: r.date || '',
+        latestIdx: idx,
+      };
       map.set(key, cur);
     }
     cur.qty += Number(r.qty) || 0;
     cur.amt += Number(r.amt) || 0;
-  }
-  return [...map.values()].sort((a, b) => b.amt - a.amt || String(a.name).localeCompare(String(b.name), 'zh-Hant'));
+    const d = r.date || '';
+    if (d > cur.latestDate || (d === cur.latestDate && idx > cur.latestIdx)) {
+      cur.latestDate = d;
+      cur.latestIdx = idx;
+    }
+  });
+  return [...map.values()].sort((a, b) => {
+    const byDate = String(b.latestDate || '').localeCompare(String(a.latestDate || ''));
+    if (byDate) return byDate;
+    return (b.latestIdx || 0) - (a.latestIdx || 0);
+  });
 }
 
 function cashFlowDetailLines(side, data) {
@@ -4016,6 +4036,8 @@ function cashFlowDetailLines(side, data) {
       qty: 1,
       unit: '筆',
       key: '__fee__',
+      date: r.date,
+      _i: r._i,
     })),
   ]);
 }
