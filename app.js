@@ -3877,9 +3877,30 @@ function renderDashboard() {
 }
 
 // ── Cash flow card (dashboard) ────────────────────────────────
-let _cfRange = 'month'; // month | year | 30d | all
+let _cfRange = 'month'; // month | year | 30d | all | custom
 let _cfScope = 'all';   // all | priv | biz
 let _cfDetailSide = null; // null | 'in' | 'out'
+let _cfMonth = '';        // YYYY-MM when range === 'month'
+let _cfFrom = '';         // YYYY-MM-DD when range === 'custom'
+let _cfTo = '';
+
+function localYmd(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function currentYm(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function ensureCfDateDefaults() {
+  if (!_cfMonth) _cfMonth = currentYm();
+  if (!_cfFrom || !_cfTo) {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (!_cfFrom) _cfFrom = localYmd(start);
+    if (!_cfTo) _cfTo = localYmd(now);
+  }
+}
 
 function cashFlowDateInRange(dateStr, range = _cfRange) {
   if (!dateStr) return false;
@@ -3887,15 +3908,19 @@ function cashFlowDateInRange(dateStr, range = _cfRange) {
   if (range === 'all') return true;
   if (range === 'year') return inYear(d, fiscalYear());
   if (range === 'month') {
-    const now = new Date();
-    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    return d.startsWith(ym);
+    ensureCfDateDefaults();
+    return d.startsWith(_cfMonth);
   }
   if (range === '30d') {
     const from = new Date();
     from.setDate(from.getDate() - 30);
-    const fromStr = from.toISOString().slice(0, 10);
-    return d >= fromStr && d <= today();
+    return d >= localYmd(from) && d <= localYmd();
+  }
+  if (range === 'custom') {
+    ensureCfDateDefaults();
+    const from = _cfFrom || '0000-01-01';
+    const to = _cfTo || '9999-12-31';
+    return d >= from && d <= to;
   }
   return true;
 }
@@ -3919,25 +3944,27 @@ function computeCashFlow(range = _cfRange, scope = _cfScope) {
     cashFlowDateInRange(e.date, range) && cashFlowMatchesScope(e, 'expense', scope)
   );
 
-  const sellRows = sells.map(t => {
+  const sellRows = sells.map((t, i) => {
     const p = DB.products.find(x => x.id === t.productId);
     const qty = t.quantity || 0;
     const amt = qty * (t.pricePerUnitEUR || 0);
     return {
       date: t.date, label: p?.name || '已刪除', amt, qty,
       productId: t.productId, kind: 'SELL', fee: t.fee || 0, unit: '張',
+      _i: i,
     };
   });
-  const buyRows = buys.map(t => {
+  const buyRows = buys.map((t, i) => {
     const p = DB.products.find(x => x.id === t.productId);
     const qty = t.quantity || 0;
     const amt = qty * (t.pricePerUnitEUR || 0);
     return {
       date: t.date, label: p?.name || '已刪除', amt, qty,
       productId: t.productId, kind: 'BUY', unit: '張',
+      _i: i,
     };
   });
-  const expRows = exps.map(e => ({
+  const expRows = exps.map((e, i) => ({
     date: e.date,
     label: CAT_LABELS[e.category] || e.desc || e.category || '費用',
     amt: expenseNetEur(e),
@@ -3945,6 +3972,7 @@ function computeCashFlow(range = _cfRange, scope = _cfScope) {
     kind: 'EXPENSE',
     unit: '筆',
     key: 'exp:' + (e.category || e.desc || 'other'),
+    _i: i,
   }));
 
   const income = sellRows.reduce((s, r) => s + r.amt, 0);
@@ -3964,20 +3992,37 @@ function computeCashFlow(range = _cfRange, scope = _cfScope) {
   };
 }
 
-/** Collapse cash-flow lines to 品相 + 數量 + 總金額. */
+/** Collapse cash-flow lines to 品相 + 數量 + 總金額; newest activity first. */
 function groupCashFlowByItem(rows) {
   const map = new Map();
-  for (const r of rows) {
+  rows.forEach((r, i) => {
     const key = r.productId || r.key || r.label;
+    const idx = r._i != null ? r._i : i;
     let cur = map.get(key);
     if (!cur) {
-      cur = { name: r.label, qty: 0, amt: 0, unit: r.unit || '張' };
+      cur = {
+        name: r.label,
+        qty: 0,
+        amt: 0,
+        unit: r.unit || '張',
+        latestDate: r.date || '',
+        latestIdx: idx,
+      };
       map.set(key, cur);
     }
     cur.qty += Number(r.qty) || 0;
     cur.amt += Number(r.amt) || 0;
-  }
-  return [...map.values()].sort((a, b) => b.amt - a.amt || String(a.name).localeCompare(String(b.name), 'zh-Hant'));
+    const d = r.date || '';
+    if (d > cur.latestDate || (d === cur.latestDate && idx > cur.latestIdx)) {
+      cur.latestDate = d;
+      cur.latestIdx = idx;
+    }
+  });
+  return [...map.values()].sort((a, b) => {
+    const byDate = String(b.latestDate || '').localeCompare(String(a.latestDate || ''));
+    if (byDate) return byDate;
+    return (b.latestIdx || 0) - (a.latestIdx || 0);
+  });
 }
 
 function cashFlowDetailLines(side, data) {
@@ -3991,6 +4036,8 @@ function cashFlowDetailLines(side, data) {
       qty: 1,
       unit: '筆',
       key: '__fee__',
+      date: r.date,
+      _i: r._i,
     })),
   ]);
 }
@@ -4032,6 +4079,22 @@ function renderCashFlowDetail(side, data) {
 
 function renderCashFlowCard() {
   if (!q('cashFlowCard')) return;
+  ensureCfDateDefaults();
+
+  const monthInp = q('cfMonth');
+  const fromInp = q('cfFrom');
+  const toInp = q('cfTo');
+  if (monthInp && monthInp.value !== _cfMonth) monthInp.value = _cfMonth;
+  if (fromInp && fromInp.value !== _cfFrom) fromInp.value = _cfFrom;
+  if (toInp && toInp.value !== _cfTo) toInp.value = _cfTo;
+
+  const monthField = q('cfMonthField');
+  const customDates = q('cfCustomDates');
+  const dateRow = q('cfDateRow');
+  if (monthField) monthField.hidden = _cfRange !== 'month';
+  if (customDates) customDates.hidden = _cfRange !== 'custom';
+  if (dateRow) dateRow.hidden = _cfRange !== 'month' && _cfRange !== 'custom';
+
   const data = computeCashFlow();
   q('cfOutVal').textContent = eur(data.expense, 0);
   q('cfInVal').textContent = eur(data.income, 0);
@@ -4661,11 +4724,15 @@ function renderTxTableForScope(scopeKey, rows) {
     </tr></thead>
     <tbody>${rows.map(r=>{
       const t = r.tx;
+      const note = String(t.note || '').trim();
+      const noteHtml = note
+        ? `<span class="tx-product-note" title="${esc(note)}">${esc(note)}</span>`
+        : '';
       return `<tr>
         <td class="col-check"><input type="checkbox" class="chk-tx" data-id="${t.id}"/></td>
         <td class="mono col-date" title="${t.date}">${t.date}</td>
         <td class="col-type">${txBadge(t.type)}</td>
-        <td class="col-product"><span class="tx-product-name" title="${esc(r.productName)}">${esc(r.productName)}</span></td>
+        <td class="col-product"><span class="tx-product-name" title="${esc(r.productName)}">${esc(r.productName)}</span>${noteHtml}</td>
         <td class="mono col-qty">${t.quantity}</td>
         <td class="amount col-amt ${r.isSell?'sell':'buy'}">${r.isSell?'':'−'}${eur(r.total)}${r.isSell && BtwEngine.sellOutputBtw(t) ? `<div class="tx-btw-note">BTW ${eur(BtwEngine.sellOutputBtw(t))}</div>` : ''}</td>
         <td class="col-actions">
@@ -5389,16 +5456,67 @@ function updateDualCostUI(which) {
   if (hint) hint.style.display = isBiz ? '' : 'none';
 }
 
-function openModalBuy(presetProductId=null, editTxId=null, presetScope='biz') {
+function setBuyProductMode(mode) {
+  const next = mode === 'new' ? 'new' : 'existing';
+  const modeEl = q('buyProductMode');
+  if (modeEl) modeEl.value = next;
+  const existing = q('buyExistingProductWrap');
+  const neu = q('buyNewProductWrap');
+  if (existing) existing.hidden = next === 'new';
+  if (neu) neu.hidden = next !== 'new';
+  if (next === 'new') {
+    const parentSel = q('buyNewParent');
+    if (parentSel) {
+      parentSel.innerHTML = '<option value="">— 無（獨立商品）—</option>' +
+        DB.products.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    }
+    q('buyNewName')?.focus();
+  }
+}
+
+function fillBuyProductSelect(presetProductId = null) {
   const sel = q('buyProductId');
+  if (!sel) return;
   sel.innerHTML = '<option value="">— 選擇商品 —</option>' +
-    DB.products.map(p=>`<option value="${p.id}"${p.id===presetProductId?' selected':''}>${esc(p.name)} (${p.type})</option>`).join('');
+    DB.products.map(p =>
+      `<option value="${p.id}"${p.id === presetProductId ? ' selected' : ''}>${esc(p.name)} (${p.type})</option>`
+    ).join('');
+}
+
+function createProductFromBuyForm(cost) {
+  const name = q('buyNewName')?.value.trim() || '';
+  if (!name) {
+    toast('請輸入新品相名稱', 'e');
+    return null;
+  }
+  const dup = DB.products.find(p => String(p.name || '').trim() === name);
+  if (dup) {
+    toast(`「${name}」已存在，請改選既有商品或換名稱`, 'e');
+    return null;
+  }
+  const product = {
+    id: uid(),
+    name,
+    type: q('buyNewType')?.value || '單卡',
+    language: q('buyNewLang')?.value || '英文',
+    marketPriceEUR: Number.isFinite(cost) ? cost : 0,
+    parentId: q('buyNewParent')?.value || undefined,
+  };
+  DB.products.push(product);
+  return product;
+}
+
+function openModalBuy(presetProductId=null, editTxId=null, presetScope='biz') {
+  fillBuyProductSelect(presetProductId);
   q('buyQty').value    = '';
   q('buyCost').value   = '';
   if (q('buyPrivCost')) q('buyPrivCost').value = '';
   q('buyDate').value   = today();
   q('buySource').value = 'nl_inperson';
   q('buyCurrency').value='EUR';
+  if (q('buyNewName')) q('buyNewName').value = '';
+  if (q('buyNewType')) q('buyNewType').value = '單卡';
+  if (q('buyNewLang')) q('buyNewLang').value = '英文';
 
   let scopeVal = presetScope === 'all' ? 'biz' : presetScope;
   if (editTxId) {
@@ -5416,6 +5534,9 @@ function openModalBuy(presetProductId=null, editTxId=null, presetScope='biz') {
   if (editTxId) {
     proofGetAll(editTxId).then(recs => renderProofThumbs('buy', recs));
   }
+  const newBtn = q('btnBuyNewProduct');
+  if (newBtn) newBtn.hidden = !!editTxId;
+  setBuyProductMode('existing');
   updateBuyHint();
   openModal('mBuy');
 }
@@ -5451,11 +5572,12 @@ function updateProductBuyHint() {
 
 q('btnSaveBuy').addEventListener('click', ()=>{
   const editId = q('buyEditId').value;
-  const productId = q('buyProductId').value;
+  const isNewProduct = !editId && q('buyProductMode')?.value === 'new';
+  let productId = q('buyProductId').value;
   const qty  = parseInt(q('buyQty').value);
   const cost = parseFloat(q('buyCost').value);
   const date = q('buyDate').value;
-  if (!productId) return toast('請選擇商品','e');
+  if (!isNewProduct && !productId) return toast('請選擇商品','e');
   if (!qty||qty<1) return toast('請輸入數量','e');
   if (isNaN(cost)||cost<0) return toast('請輸入成本','e');
   if (!date) return toast('請選擇日期','e');
@@ -5465,6 +5587,13 @@ q('btnSaveBuy').addEventListener('click', ()=>{
   const privCost = privRaw === '' || privRaw == null ? null : parseFloat(privRaw);
   if (scopeVal === 'biz' && privCost != null && (isNaN(privCost) || privCost < 0)) {
     return toast('私人成本請輸入有效數字','e');
+  }
+
+  let createdProduct = null;
+  if (isNewProduct) {
+    createdProduct = createProductFromBuyForm(cost);
+    if (!createdProduct) return;
+    productId = createdProduct.id;
   }
 
   // When editing a priv-only / priv-side row, buyCost is that side's cost only
@@ -5501,7 +5630,11 @@ q('btnSaveBuy').addEventListener('click', ()=>{
   proofCommitToIds('buy', ids).then(() => {
     closeModal('mBuy');
     refreshCurrentView();
-    toast(editId ? '進貨紀錄已更新' : `進貨 × ${qty} 張已記錄`, 's');
+    if (createdProduct) {
+      toast(`已建立「${createdProduct.name}」並記錄進貨 × ${qty}`, 's');
+    } else {
+      toast(editId ? '進貨紀錄已更新' : `進貨 × ${qty} 張已記錄`, 's');
+    }
   });
 });
 
@@ -7237,10 +7370,43 @@ function wireEvents() {
   document.querySelectorAll('#cfRangeTabs .cf-seg-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       _cfRange = btn.dataset.cfRange || 'month';
+      if (_cfRange === 'month') {
+        ensureCfDateDefaults();
+      }
+      if (_cfRange === 'custom') {
+        ensureCfDateDefaults();
+        // Seed custom range from the currently selected month for a sensible default.
+        const [y, m] = String(_cfMonth || currentYm()).split('-').map(Number);
+        const start = new Date(y, m - 1, 1);
+        const end = new Date(y, m, 0);
+        _cfFrom = localYmd(start);
+        _cfTo = localYmd(end);
+      }
       _cfDetailSide = null;
       renderCashFlowCard();
     });
   });
+  q('cfMonth')?.addEventListener('change', () => {
+    const v = q('cfMonth')?.value;
+    if (v) _cfMonth = v;
+    _cfRange = 'month';
+    _cfDetailSide = null;
+    renderCashFlowCard();
+  });
+  const onCustomDate = () => {
+    _cfFrom = q('cfFrom')?.value || _cfFrom;
+    _cfTo = q('cfTo')?.value || _cfTo;
+    if (_cfFrom && _cfTo && _cfFrom > _cfTo) {
+      const tmp = _cfFrom;
+      _cfFrom = _cfTo;
+      _cfTo = tmp;
+    }
+    _cfRange = 'custom';
+    _cfDetailSide = null;
+    renderCashFlowCard();
+  };
+  q('cfFrom')?.addEventListener('change', onCustomDate);
+  q('cfTo')?.addEventListener('change', onCustomDate);
   document.querySelectorAll('#cfScopeChips .cf-chip').forEach(btn => {
     btn.addEventListener('click', () => {
       _cfScope = btn.dataset.cfScope || 'all';
@@ -7391,6 +7557,8 @@ function wireEvents() {
   q('buyCurrency').addEventListener('change', ()=>{
     q('buyFxGroup').style.display=q('buyCurrency').value!=='EUR'?'flex':'none';
   });
+  q('btnBuyNewProduct')?.addEventListener('click', () => setBuyProductMode('new'));
+  q('btnBuyPickExisting')?.addEventListener('click', () => setBuyProductMode('existing'));
 
   // Product modal currency
   q('pBuySource')?.addEventListener('change', updateProductBuyHint);

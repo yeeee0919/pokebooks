@@ -402,6 +402,7 @@ input, select { font-family: var(--font); }
   background: var(--s2);
   border: 1px solid var(--b1);
   border-radius: 12px;
+  flex-wrap: wrap;
 }
 .cf-seg-btn {
   border: none;
@@ -418,6 +419,45 @@ input, select { font-family: var(--font); }
   background: #fff;
   color: var(--t1);
   box-shadow: 0 1px 3px rgba(15, 23, 42, .08);
+}
+.cf-date-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem .75rem;
+  align-items: flex-end;
+}
+.cf-date-field {
+  display: flex;
+  flex-direction: column;
+  gap: .22rem;
+  min-width: 0;
+}
+.cf-date-field > span {
+  font-size: .65rem;
+  font-weight: 700;
+  color: var(--t3);
+  letter-spacing: .02em;
+}
+.cf-date-inp {
+  background: #fff;
+  border: 1px solid var(--b1);
+  color: var(--t1);
+  border-radius: 10px;
+  padding: .38rem .65rem;
+  font-size: .78rem;
+  font-weight: 600;
+  outline: none;
+  min-width: 9.5rem;
+  transition: border-color .15s, box-shadow .15s;
+}
+.cf-date-inp:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+}
+.cf-custom-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem .75rem;
 }
 .cf-scope-chips {
   display: flex;
@@ -884,6 +924,15 @@ input, select { font-family: var(--font); }
   line-height: 1.35; word-break: break-word;
   display: block;
 }
+.tx-product-note {
+  display: block;
+  font-size: .65rem;
+  font-weight: 500;
+  color: var(--t3);
+  margin-top: .12rem;
+  line-height: 1.3;
+  word-break: break-word;
+}
 .tx-table .col-qty,
 .tx-table .col-amt,
 .tx-table .col-cogs,
@@ -1014,7 +1063,11 @@ input, select { font-family: var(--font); }
 .btn-ghost:hover { color: var(--t1); }
 .btn-danger { background: var(--red); color: #fff; font-size: .78rem; font-weight: 800; padding: .42rem .95rem; border-radius: var(--r1); }
 .btn-danger:hover { background: #dc2626; }
-.btn-sm { padding: .3rem .65rem; font-size: .72rem; }
+.buy-new-product-link {
+  display: inline-block;
+  margin-top: .35rem;
+  font-weight: 600;
+}
 
 /* ─── FORMS ─── */
 .fg { display: flex; flex-direction: column; gap: .28rem; }
@@ -1242,7 +1295,8 @@ input, select { font-family: var(--font); }
 .tx-split-container.view-all .tx-table td {
   padding: .5rem .55rem;
 }
-.tx-split-container.view-all .tx-product-name {
+.tx-split-container.view-all .tx-product-name,
+.tx-split-container.view-all .tx-product-note {
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;

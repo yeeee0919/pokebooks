@@ -126,10 +126,27 @@
           </div>
           <div class="cf-filters">
             <div class="cf-seg" id="cfRangeTabs" role="tablist" aria-label="時間範圍">
-              <button type="button" class="cf-seg-btn active" data-cf-range="month">本月</button>
+              <button type="button" class="cf-seg-btn active" data-cf-range="month">按月</button>
               <button type="button" class="cf-seg-btn" data-cf-range="year">本年</button>
               <button type="button" class="cf-seg-btn" data-cf-range="30d">30D</button>
               <button type="button" class="cf-seg-btn" data-cf-range="all">全部</button>
+              <button type="button" class="cf-seg-btn" data-cf-range="custom">自訂</button>
+            </div>
+            <div class="cf-date-row" id="cfDateRow">
+              <label class="cf-date-field" id="cfMonthField">
+                <span>月份</span>
+                <input type="month" id="cfMonth" class="cf-date-inp" />
+              </label>
+              <div class="cf-custom-dates" id="cfCustomDates" hidden>
+                <label class="cf-date-field">
+                  <span>起日</span>
+                  <input type="date" id="cfFrom" class="cf-date-inp" />
+                </label>
+                <label class="cf-date-field">
+                  <span>迄日</span>
+                  <input type="date" id="cfTo" class="cf-date-inp" />
+                </label>
+              </div>
             </div>
             <div class="cf-scope-chips" id="cfScopeChips" role="tablist" aria-label="帳戶範圍">
               <button type="button" class="cf-chip active" data-cf-scope="all">全部帳戶</button>
@@ -507,8 +524,30 @@
     <div class="mhd"><h2>🛒 記錄進貨</h2><button class="mclose" data-close="mBuy">&times;</button></div>
     <div class="mbd">
       <input type="hidden" id="buyEditId"/>
-      <div class="fg"><label>商品 <span class="req">*</span></label>
+      <input type="hidden" id="buyProductMode" value="existing"/>
+      <div class="fg" id="buyExistingProductWrap">
+        <label>商品 <span class="req">*</span></label>
         <select id="buyProductId" class="finp"><option value="">— 選擇商品 —</option></select>
+        <button type="button" class="link-btn buy-new-product-link" id="btnBuyNewProduct">＋ 這是全新品相，一起新增</button>
+      </div>
+      <div id="buyNewProductWrap" hidden>
+        <div class="fg">
+          <label>全新品相名稱 <span class="req">*</span></label>
+          <input type="text" id="buyNewName" class="finp" placeholder="例如：必勝客皮卡丘 PSA10"/>
+        </div>
+        <div class="frow">
+          <div class="fg"><label>類型</label>
+            <select id="buyNewType" class="finp"><option>單卡</option><option>鑑定卡</option><option>卡盒</option><option>畫作</option><option>周邊</option></select>
+          </div>
+          <div class="fg"><label>語言</label>
+            <select id="buyNewLang" class="finp"><option value="英文">英文</option><option value="日文">日文</option><option value="繁體中文">繁體中文</option><option value="其他">其他</option></select>
+          </div>
+        </div>
+        <div class="fg"><label>上層商品（送評卡的原始卡，選填）</label>
+          <select id="buyNewParent" class="finp"><option value="">— 無（獨立商品）—</option></select>
+        </div>
+        <p class="field-hint">儲存進貨時會一併建立此商品；市價預設帶入本次商業成本，之後可在庫存再改。</p>
+        <button type="button" class="link-btn" id="btnBuyPickExisting">← 改選既有商品</button>
       </div>
       <div class="frow">
         <div class="fg"><label>數量 <span class="req">*</span></label><input type="number" id="buyQty" class="finp" placeholder="1" min="1"/></div>
