@@ -3877,9 +3877,30 @@ function renderDashboard() {
 }
 
 // ── Cash flow card (dashboard) ────────────────────────────────
-let _cfRange = 'month'; // month | year | 30d | all
+let _cfRange = 'month'; // month | year | 30d | all | custom
 let _cfScope = 'all';   // all | priv | biz
 let _cfDetailSide = null; // null | 'in' | 'out'
+let _cfMonth = '';        // YYYY-MM when range === 'month'
+let _cfFrom = '';         // YYYY-MM-DD when range === 'custom'
+let _cfTo = '';
+
+function localYmd(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function currentYm(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function ensureCfDateDefaults() {
+  if (!_cfMonth) _cfMonth = currentYm();
+  if (!_cfFrom || !_cfTo) {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (!_cfFrom) _cfFrom = localYmd(start);
+    if (!_cfTo) _cfTo = localYmd(now);
+  }
+}
 
 function cashFlowDateInRange(dateStr, range = _cfRange) {
   if (!dateStr) return false;
@@ -3887,15 +3908,19 @@ function cashFlowDateInRange(dateStr, range = _cfRange) {
   if (range === 'all') return true;
   if (range === 'year') return inYear(d, fiscalYear());
   if (range === 'month') {
-    const now = new Date();
-    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    return d.startsWith(ym);
+    ensureCfDateDefaults();
+    return d.startsWith(_cfMonth);
   }
   if (range === '30d') {
     const from = new Date();
     from.setDate(from.getDate() - 30);
-    const fromStr = from.toISOString().slice(0, 10);
-    return d >= fromStr && d <= today();
+    return d >= localYmd(from) && d <= localYmd();
+  }
+  if (range === 'custom') {
+    ensureCfDateDefaults();
+    const from = _cfFrom || '0000-01-01';
+    const to = _cfTo || '9999-12-31';
+    return d >= from && d <= to;
   }
   return true;
 }
@@ -4032,6 +4057,22 @@ function renderCashFlowDetail(side, data) {
 
 function renderCashFlowCard() {
   if (!q('cashFlowCard')) return;
+  ensureCfDateDefaults();
+
+  const monthInp = q('cfMonth');
+  const fromInp = q('cfFrom');
+  const toInp = q('cfTo');
+  if (monthInp && monthInp.value !== _cfMonth) monthInp.value = _cfMonth;
+  if (fromInp && fromInp.value !== _cfFrom) fromInp.value = _cfFrom;
+  if (toInp && toInp.value !== _cfTo) toInp.value = _cfTo;
+
+  const monthField = q('cfMonthField');
+  const customDates = q('cfCustomDates');
+  const dateRow = q('cfDateRow');
+  if (monthField) monthField.hidden = _cfRange !== 'month';
+  if (customDates) customDates.hidden = _cfRange !== 'custom';
+  if (dateRow) dateRow.hidden = _cfRange !== 'month' && _cfRange !== 'custom';
+
   const data = computeCashFlow();
   q('cfOutVal').textContent = eur(data.expense, 0);
   q('cfInVal').textContent = eur(data.income, 0);
@@ -4661,11 +4702,15 @@ function renderTxTableForScope(scopeKey, rows) {
     </tr></thead>
     <tbody>${rows.map(r=>{
       const t = r.tx;
+      const note = String(t.note || '').trim();
+      const noteHtml = note
+        ? `<span class="tx-product-note" title="${esc(note)}">${esc(note)}</span>`
+        : '';
       return `<tr>
         <td class="col-check"><input type="checkbox" class="chk-tx" data-id="${t.id}"/></td>
         <td class="mono col-date" title="${t.date}">${t.date}</td>
         <td class="col-type">${txBadge(t.type)}</td>
-        <td class="col-product"><span class="tx-product-name" title="${esc(r.productName)}">${esc(r.productName)}</span></td>
+        <td class="col-product"><span class="tx-product-name" title="${esc(r.productName)}">${esc(r.productName)}</span>${noteHtml}</td>
         <td class="mono col-qty">${t.quantity}</td>
         <td class="amount col-amt ${r.isSell?'sell':'buy'}">${r.isSell?'':'−'}${eur(r.total)}${r.isSell && BtwEngine.sellOutputBtw(t) ? `<div class="tx-btw-note">BTW ${eur(BtwEngine.sellOutputBtw(t))}</div>` : ''}</td>
         <td class="col-actions">
@@ -7237,10 +7282,43 @@ function wireEvents() {
   document.querySelectorAll('#cfRangeTabs .cf-seg-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       _cfRange = btn.dataset.cfRange || 'month';
+      if (_cfRange === 'month') {
+        ensureCfDateDefaults();
+      }
+      if (_cfRange === 'custom') {
+        ensureCfDateDefaults();
+        // Seed custom range from the currently selected month for a sensible default.
+        const [y, m] = String(_cfMonth || currentYm()).split('-').map(Number);
+        const start = new Date(y, m - 1, 1);
+        const end = new Date(y, m, 0);
+        _cfFrom = localYmd(start);
+        _cfTo = localYmd(end);
+      }
       _cfDetailSide = null;
       renderCashFlowCard();
     });
   });
+  q('cfMonth')?.addEventListener('change', () => {
+    const v = q('cfMonth')?.value;
+    if (v) _cfMonth = v;
+    _cfRange = 'month';
+    _cfDetailSide = null;
+    renderCashFlowCard();
+  });
+  const onCustomDate = () => {
+    _cfFrom = q('cfFrom')?.value || _cfFrom;
+    _cfTo = q('cfTo')?.value || _cfTo;
+    if (_cfFrom && _cfTo && _cfFrom > _cfTo) {
+      const tmp = _cfFrom;
+      _cfFrom = _cfTo;
+      _cfTo = tmp;
+    }
+    _cfRange = 'custom';
+    _cfDetailSide = null;
+    renderCashFlowCard();
+  };
+  q('cfFrom')?.addEventListener('change', onCustomDate);
+  q('cfTo')?.addEventListener('change', onCustomDate);
   document.querySelectorAll('#cfScopeChips .cf-chip').forEach(btn => {
     btn.addEventListener('click', () => {
       _cfScope = btn.dataset.cfScope || 'all';

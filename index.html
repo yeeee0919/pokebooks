@@ -126,10 +126,27 @@
           </div>
           <div class="cf-filters">
             <div class="cf-seg" id="cfRangeTabs" role="tablist" aria-label="時間範圍">
-              <button type="button" class="cf-seg-btn active" data-cf-range="month">本月</button>
+              <button type="button" class="cf-seg-btn active" data-cf-range="month">按月</button>
               <button type="button" class="cf-seg-btn" data-cf-range="year">本年</button>
               <button type="button" class="cf-seg-btn" data-cf-range="30d">30D</button>
               <button type="button" class="cf-seg-btn" data-cf-range="all">全部</button>
+              <button type="button" class="cf-seg-btn" data-cf-range="custom">自訂</button>
+            </div>
+            <div class="cf-date-row" id="cfDateRow">
+              <label class="cf-date-field" id="cfMonthField">
+                <span>月份</span>
+                <input type="month" id="cfMonth" class="cf-date-inp" />
+              </label>
+              <div class="cf-custom-dates" id="cfCustomDates" hidden>
+                <label class="cf-date-field">
+                  <span>起日</span>
+                  <input type="date" id="cfFrom" class="cf-date-inp" />
+                </label>
+                <label class="cf-date-field">
+                  <span>迄日</span>
+                  <input type="date" id="cfTo" class="cf-date-inp" />
+                </label>
+              </div>
             </div>
             <div class="cf-scope-chips" id="cfScopeChips" role="tablist" aria-label="帳戶範圍">
               <button type="button" class="cf-chip active" data-cf-scope="all">全部帳戶</button>

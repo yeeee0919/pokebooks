@@ -57,7 +57,15 @@ const TransactionLedger = {
         );
       }
 
-      list.sort((a, b) => b.date.localeCompare(a.date));
+      // Newest → oldest: date desc, then later-in-store (newer entry) first on ties.
+      list = list
+        .map((t, i) => ({ t, i }))
+        .sort((a, b) => {
+          const byDate = String(b.t.date || '').localeCompare(String(a.t.date || ''));
+          if (byDate) return byDate;
+          return b.i - a.i;
+        })
+        .map(({ t }) => t);
 
       if (filters.enrich === false) return list;
       return list.map(enrichRow);
