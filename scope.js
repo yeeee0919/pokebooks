@@ -59,6 +59,20 @@ const ScopeLedger = (() => {
     return transactions.filter(t => matchesScope(t, scope, transactions));
   }
 
+  /**
+   * Personal collection visibility (inventory + private transactions tab).
+   * Write path stays single-scope. Private view overlays commercial SELL and
+   * GRADE (physical movement) but not commercial BUYs — those already have a
+   * paired private row. Commercial view never includes private transactions.
+   */
+  function matchesInventoryView(tx, viewScope, transactions) {
+    if (!viewScope || viewScope === 'all') return true;
+    if (matchesScope(tx, viewScope, transactions)) return true;
+    if (viewScope !== PRIV) return false;
+    if (normalizeScope(tx, transactions) !== BIZ) return false;
+    return tx?.type === 'SELL' || tx?.type === 'GRADE';
+  }
+
   function findPairedTx(tx, transactions) {
     if (!tx?.pairId) return null;
     return transactions.find(t => t.id !== tx.id && t.pairId === tx.pairId) || null;
@@ -167,6 +181,7 @@ const ScopeLedger = (() => {
     PAIR_SYNC_FIELDS,
     normalizeScope,
     matchesScope,
+    matchesInventoryView,
     filterByScope,
     findPairedTx,
     getPairedPriv,

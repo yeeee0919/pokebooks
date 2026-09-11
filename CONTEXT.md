@@ -10,8 +10,8 @@ Shared language for agents and humans working on this codebase.
 
 **Scope pair** — when the user records a **commercial BUY** (especially opening inbreng / private transfer), the system may create two linked transactions (one `biz`, one `priv`) sharing a `pairId`, so commercial book value and private acquisition cost can differ. Editing the **commercial** row copies shared fields (product, date, quantity, source) onto the paired private row; **unit cost does not sync**. Editing the **private** row of a pair updates only that private row — commercial books are not touched. Deleting the `biz` row also deletes the paired `priv` row; deleting `priv` alone does not touch `biz`.
 
-**Sales are single-scope** — a SELL is recorded on exactly one account scope. Commercial sales never mirror into private, and private sales never appear on commercial inventory, KOR, or business P&L.
-_Avoid_: pairing SELL across biz/priv
+**Sales are single-scope (write)** — a SELL is recorded on exactly one account scope. Private sales never appear on commercial inventory, KOR, or business P&L. Commercial sales are not copied onto a second private row.
+_Avoid_: pairing SELL across biz/priv; writing a mirrored priv SELL for KOR
 
 **Pure private entry** — when the user selects **私人 (priv)**, only one transaction is created with no pair.
 
@@ -26,9 +26,9 @@ _Avoid_: treating private acquisition cost as commercial book value
 
 **COGS** — cost of goods sold for a SELL transaction. Snapshotted as `cogsPerUnit` at write time; recalculated when the SELL is edited or when an upstream BUY that affects the same product+scope is edited.
 
-**Commercial inventory** — stock and P&L figures filtered to `scope === 'biz'`. Used for KOR reporting, the homepage dashboard KPIs, and the business P&L report.
+**Commercial inventory** — stock and P&L figures filtered to `scope === 'biz'`. Used for KOR reporting, the homepage dashboard KPIs, and the business P&L report. Private sales never appear here.
 
-**Private inventory** — stock figures filtered to `scope === 'priv'`. Excluded from KOR and business P&L.
+**Private inventory** — the owner's collection view. Stock, product detail, and the private transactions tab include `scope === 'priv'` transactions, plus commercial SELL and GRADE as physical movement (售出／剩餘／明細／交易列表). Overlay does not create a second ledger row and does not change KOR. Private sales never change commercial quantity. Excluded from KOR and business P&L.
 
 ## Capture inbox
 

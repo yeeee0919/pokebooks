@@ -3248,6 +3248,7 @@ function getWACC(id, date, scope) { return Valuation.getWACC(id, date, scope); }
 function getInventoryCost(id, scope) { return Valuation.getInventoryCost(id, scope); }
 function computeCogs(id, date, qty, scope) { return Valuation.computeCogs(id, date, qty, scope); }
 function cogsForSell(t) { return Valuation.cogsForSell(t); }
+function personalCogsForSell(t) { return Valuation.personalCogsForSell(t); }
 function txScope(t) { return ScopeLedger.normalizeScope(t, DB.transactions); }
 
 function emptyLiveDb() {
@@ -4122,9 +4123,9 @@ function calculateProductMetrics(productId, scopeF = 'all') {
 
   // Filter transactions by product & scope
   const buyTxns  = DB.transactions.filter(t => (t.productId === productId || (t.type==='GRADE' && t.targetProductId===productId)) && t.type==='BUY' && ScopeLedger.matchesScope(t, scopeF, DB.transactions));
-  const sellTxns = DB.transactions.filter(t => t.productId === productId && t.type==='SELL' && ScopeLedger.matchesScope(t, scopeF, DB.transactions));
-  const gradeOut = DB.transactions.filter(t => t.productId === productId && t.type==='GRADE' && ScopeLedger.matchesScope(t, scopeF, DB.transactions));
-  const gradeIn  = DB.transactions.filter(t => t.targetProductId === productId && t.type==='GRADE' && ScopeLedger.matchesScope(t, scopeF, DB.transactions));
+  const sellTxns = DB.transactions.filter(t => t.productId === productId && t.type==='SELL' && ScopeLedger.matchesInventoryView(t, scopeF, DB.transactions));
+  const gradeOut = DB.transactions.filter(t => t.productId === productId && t.type==='GRADE' && ScopeLedger.matchesInventoryView(t, scopeF, DB.transactions));
+  const gradeIn  = DB.transactions.filter(t => t.targetProductId === productId && t.type==='GRADE' && ScopeLedger.matchesInventoryView(t, scopeF, DB.transactions));
 
   const totalBuyQty = buyTxns.reduce((s,t) => s + t.quantity, 0) + gradeIn.reduce((s,t) => s + t.quantity, 0);
   const totalSellQty = sellTxns.reduce((s,t) => s + t.quantity, 0);
@@ -4143,7 +4144,9 @@ function calculateProductMetrics(productId, scopeF = 'all') {
   // 已實現利潤 = 銷售總收入 - 銷售總COGS - 銷售手續費
   const totalRev = sellTxns.reduce((s,t) => s + t.quantity * (t.pricePerUnitEUR||0), 0);
   const totalFees = sellTxns.reduce((s,t) => s + (t.fee||0), 0);
-  const totalCogs = sellTxns.reduce((s,t) => s + cogsForSell(t), 0);
+  const totalCogs = sellTxns.reduce((s,t) => s + (
+    scopeF === 'priv' ? personalCogsForSell(t) : cogsForSell(t)
+  ), 0);
   const realizedProfit = totalRev - totalCogs - totalFees;
 
   // 回本進度: Net Invested = Total Cost of ALL Buys - Total Revenue from Sells
@@ -4566,10 +4569,10 @@ function openDetail(productId, scope = 'all') {
     ).join('');
 
   const sold = DB.transactions
-    .filter(t => t.type === 'SELL' && t.productId === productId && ScopeLedger.matchesScope(t, scope, DB.transactions))
+    .filter(t => t.type === 'SELL' && t.productId === productId && ScopeLedger.matchesInventoryView(t, scope, DB.transactions))
     .reduce((s, t) => s + t.quantity, 0);
   const rev = DB.transactions
-    .filter(t => t.type === 'SELL' && t.productId === productId && ScopeLedger.matchesScope(t, scope, DB.transactions))
+    .filter(t => t.type === 'SELL' && t.productId === productId && ScopeLedger.matchesInventoryView(t, scope, DB.transactions))
     .reduce((s, t) => s + t.quantity * (t.pricePerUnitEUR || 0), 0);
 
   q('detailStats').innerHTML = `
@@ -4592,7 +4595,7 @@ function openDetail(productId, scope = 'all') {
 }
 
 function renderDetailTransactions(productId, scope) {
-  const txns = Ledger.query({ productId, scope, enrich: false });
+  const txns = Ledger.query({ productId, scope, view: 'inventory', enrich: false });
   const el = q('detailTxList');
   if (!txns.length) {
     el.innerHTML = '<p class="empty-sm" style="margin-top:.35rem">尚無交易記錄</p>';
@@ -4629,7 +4632,7 @@ function renderDetailTransactions(productId, scope) {
       }).join('')}</tbody>
     </table>
   </div>
-  <p class="field-hint">進貨選「商業」時可能同時建立商業＋私人各一筆（成本可不同）。銷售則只記在你選的帳戶：私人銷售不會出現在商業庫存／KOR。</p>`;
+  <p class="field-hint">進貨選「商業」時可能同時建立商業＋私人各一筆（成本可不同）。銷售只記一邊：私人銷售不進商業庫存／KOR；商業銷售與送評會出現在私人庫存和交易（實體出庫），但不另寫一筆私人帳。</p>`;
 
   el.querySelectorAll('.detail-tx-row').forEach(row => {
     row.addEventListener('click', () => editTransaction(row.dataset.id));
@@ -4695,7 +4698,7 @@ function renderTransactions() {
   const yr   = q('txYearFilter')?.value||String(fiscalYear());
   const type = q('txTypeFilter')?.value||'';
 
-  renderTxTableForScope('priv', Ledger.query({ scope: 'priv', year: yr, type: type || undefined }));
+  renderTxTableForScope('priv', Ledger.query({ scope: 'priv', view: 'inventory', year: yr, type: type || undefined }));
   renderTxTableForScope('biz',  Ledger.query({ scope: 'biz',  year: yr, type: type || undefined }));
 }
 
@@ -4731,7 +4734,7 @@ function renderTxTableForScope(scopeKey, rows) {
       return `<tr>
         <td class="col-check"><input type="checkbox" class="chk-tx" data-id="${t.id}"/></td>
         <td class="mono col-date" title="${t.date}">${t.date}</td>
-        <td class="col-type">${txBadge(t.type)}</td>
+        <td class="col-type">${txBadge(t.type)}${scopeKey === 'priv' && r.scope === 'biz' ? ' <span class="type-badge">商業</span>' : ''}</td>
         <td class="col-product"><span class="tx-product-name" title="${esc(r.productName)}">${esc(r.productName)}</span>${noteHtml}</td>
         <td class="mono col-qty">${t.quantity}</td>
         <td class="amount col-amt ${r.isSell?'sell':'buy'}">${r.isSell?'':'−'}${eur(r.total)}${r.isSell && BtwEngine.sellOutputBtw(t) ? `<div class="tx-btw-note">BTW ${eur(BtwEngine.sellOutputBtw(t))}</div>` : ''}</td>
@@ -5817,11 +5820,11 @@ function openModalSell(presetProductId=null, editTxId=null, presetScope='biz') {
   let scopeVal = editTx ? ScopeLedger.uiScopeForTx(editTx) : (presetScope === 'all' ? 'biz' : presetScope);
   _sellScopeLock = null;
   if (!editTx) {
-    // Lock only when opened from the inventory page. Transactions「記錄銷售」
-    // keeps free choice — presetScope only preselects, it must not lock.
+    // Lock only from 商業庫存. 個人庫存 presets 私人 but can switch to 商務.
+    // Transactions「記錄銷售」keeps free choice — presetScope only preselects.
     if (isInventoryTab(tab)) {
       scopeVal = inventoryPageScope();
-      _sellScopeLock = inventoryPageScope();
+      _sellScopeLock = inventoryPageScope() === 'biz' ? 'biz' : null;
     }
   }
   setScopeValue('sellScope', scopeVal);
@@ -5898,11 +5901,11 @@ function updateSellScopeUI() {
     if (scope === 'priv') {
       hint.textContent = _sellScopeLock === 'priv'
         ? '從私人庫存進入：只記入私人帳，不計入 KOR，也不會出現在商業庫存／商業交易。'
-        : '私人銷售只記入私人帳，不計入 KOR，不會寫入商業報表。';
+        : '私人銷售只記入私人帳，不計入 KOR，不會寫入商業報表。從個人庫存也可改選商務。';
     } else {
       hint.textContent = _sellScopeLock === 'biz'
-        ? '從商業庫存進入：只記入商業帳並計入 KOR（不再自動寫入私人）。'
-        : '商業銷售只記入商業帳並計入 KOR（不再自動鏡射到私人）。';
+        ? '從商業庫存進入：只記入商業帳並計入 KOR。私人庫存會看到這筆出庫，但不另寫一筆私人銷售。'
+        : '商業銷售只記入商業帳並計入 KOR。私人庫存會看到這筆出庫，但不另寫一筆私人銷售。';
     }
   }
   updateSellPostageUI();

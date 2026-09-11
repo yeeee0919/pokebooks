@@ -19,7 +19,9 @@ const ValuationEngine = {
       return ScopeLedger.matchesScope(t, scope, getTransactions());
     }
 
-    /** Quantity in stock for a product, filtered by scope ('biz'|'priv'|'all') */
+    /** Quantity in stock for a product, filtered by scope ('biz'|'priv'|'all').
+     *  Private remaining also applies commercial SELL and GRADE — those cards
+     *  left (or entered) the physical collection. Private sales never change biz qty. */
     function getQty(productId, scope = 'all') {
       let qty = 0;
       for (const t of getTransactions()) {
@@ -34,7 +36,22 @@ const ValuationEngine = {
           qty += t.quantity;
         }
       }
+      if (scope === 'priv') {
+        for (const t of getTransactions()) {
+          if (txScope(t) !== 'biz') continue;
+          if (t.type === 'SELL' && t.productId === productId) qty -= t.quantity;
+          if (t.type === 'GRADE' && t.productId === productId) qty -= t.quantity;
+          if (t.type === 'GRADE' && t.targetProductId === productId) qty += t.quantity;
+        }
+      }
       return Math.max(0, qty);
+    }
+
+    function overlaysPrivGradeIn(t, productId, scope) {
+      return scope === 'priv'
+        && t.type === 'GRADE'
+        && t.targetProductId === productId
+        && txScope(t) === 'biz';
     }
 
     function getWACC(productId, asOfDate, scope = 'all') {
@@ -44,15 +61,18 @@ const ValuationEngine = {
       let totalCost = 0;
       let totalQty = 0;
       const txns = getTransactions()
-        .filter(t => t.date <= asOfDate && scopeMatches(t, scope))
+        .filter(t => t.date <= asOfDate && (
+          scopeMatches(t, scope) || overlaysPrivGradeIn(t, productId, scope)
+        ))
         .sort((a, b) => a.date.localeCompare(b.date));
 
       for (const t of txns) {
-        if (t.productId === productId && t.type === 'BUY') {
+        if (t.productId === productId && t.type === 'BUY' && scopeMatches(t, scope)) {
           totalCost += t.quantity * (t.pricePerUnitEUR || 0);
           totalQty += t.quantity;
         }
-        if (t.type === 'GRADE' && t.targetProductId === productId) {
+        if (t.type === 'GRADE' && t.targetProductId === productId
+            && (scopeMatches(t, scope) || overlaysPrivGradeIn(t, productId, scope))) {
           const srcWacc = getWACC(t.productId, t.date, scope);
           const gradeFee = t.feePerUnitEUR || 0;
           totalCost += t.quantity * (srcWacc + gradeFee);
@@ -79,6 +99,13 @@ const ValuationEngine = {
       if (tx.cogsPerUnit != null) return tx.cogsPerUnit * tx.quantity;
       const scope = txScope(tx);
       return computeCogs(tx.productId, tx.date, tx.quantity, scope);
+    }
+
+    /** Personal-view COGS: commercial SELLs use private acquisition cost, not tax book COGS. */
+    function personalCogsForSell(tx) {
+      if (!tx || tx.type !== 'SELL') return 0;
+      if (txScope(tx) === 'priv') return cogsForSell(tx);
+      return getWACC(tx.productId, tx.date, 'priv') * tx.quantity;
     }
 
     function snapshotCogsForSell(productId, date, scope) {
@@ -142,6 +169,7 @@ const ValuationEngine = {
       getInventoryCost,
       computeCogs,
       cogsForSell,
+      personalCogsForSell,
       snapshotCogsForSell,
       recalcSellCogs,
       recalcDownstreamSells,

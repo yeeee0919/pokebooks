@@ -108,8 +108,8 @@ assert(sells.every(t => ScopeLedger.normalizeScope(t, transactions) === 'biz'), 
 assert(sells.every(t => !t.pairId), 'sells are not paired across scopes');
 assert(valuation.getQty('nm', 'biz') === 3, 'nm stock 4-1=3');
 assert(valuation.getQty('lp', 'biz') === 2, 'lp stock 4-2=2');
-assert(valuation.getQty('nm', 'priv') === 4, 'priv nm untouched');
-assert(valuation.getQty('lp', 'priv') === 4, 'priv lp untouched');
+assert(valuation.getQty('nm', 'priv') === 3, 'priv nm remaining drops with commercial SELL');
+assert(valuation.getQty('lp', 'priv') === 2, 'priv lp remaining drops with commercial SELL');
 
 const nmSell = sells.find(t => t.productId === 'nm');
 const lpSell = sells.find(t => t.productId === 'lp');

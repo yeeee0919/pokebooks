@@ -41,7 +41,11 @@ const TransactionLedger = {
       let list = txns().slice();
 
       if (filters.scope && filters.scope !== 'all') {
-        list = ScopeLedger.filterByScope(list, filters.scope);
+        if (filters.view === 'inventory') {
+          list = list.filter(t => ScopeLedger.matchesInventoryView(t, filters.scope, txns()));
+        } else {
+          list = ScopeLedger.filterByScope(list, filters.scope);
+        }
       }
       if (filters.year && filters.year !== 'all') {
         const yr = String(filters.year);
