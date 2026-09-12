@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PokéBooks — 寶可夢卡記帳系統</title>
+  <meta name="description" content="荷蘭 eenmanszaak 寶可夢卡記帳、庫存、KOR 監控一體化系統"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<div class="app-layout">
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-pokeball">🃏</div>
+      <div class="logo-texts">
+        <span class="logo-title">PokéBooks</span>
+        <span class="logo-sub">荷蘭卡牌記帳</span>
+      </div>
+    </div>
+
+    <div class="kor-mini-widget" id="korMiniWidget">
+      <div class="kor-mini-header">
+        <span>KOR 年度進度</span>
+        <span id="korMiniPct">0%</span>
+      </div>
+      <div class="kor-mini-track">
+        <div class="kor-mini-fill" id="korMiniFill" style="width:0%"></div>
+      </div>
+      <div class="kor-mini-values">
+        <span id="korMiniValue">€0</span>
+        <span>/ €20,000</span>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">日常記帳</div>
+      <button class="nav-btn active" data-tab="dashboard"><span class="ni">📊</span><span>儀表板</span></button>
+      <button class="nav-btn" data-tab="inventory"><span class="ni">📦</span><span>庫存管理</span><span class="nav-badge" id="badgeInventory" style="display:none"></span></button>
+      <button class="nav-btn" data-tab="sales"><span class="ni">💰</span><span>銷售記錄</span></button>
+      <button class="nav-btn" data-tab="purchases"><span class="ni">🛒</span><span>進貨記錄</span></button>
+      <button class="nav-btn" data-tab="expenses"><span class="ni">💸</span><span>費用記錄</span></button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">財務報告</div>
+      <button class="nav-btn" data-tab="reports"><span class="ni">📋</span><span>損益報表</span></button>
+      <button class="nav-btn" data-tab="calendar"><span class="ni">📅</span><span>報稅行事曆</span></button>
+    </div>
+
+    <div class="sidebar-spacer"></div>
+
+    <div class="nav-group">
+      <button class="nav-btn" data-tab="settings"><span class="ni">⚙️</span><span>設定 &amp; 備份</span></button>
+    </div>
+  </nav>
+
+  <!-- ═══ MAIN ═══ -->
+  <div class="main-wrap">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1 class="topbar-title" id="topbarTitle">儀表板</h1>
+        <span class="topbar-sub" id="topbarSub"></span>
+      </div>
+      <div class="topbar-right">
+        <span class="year-badge" id="yearBadge">2026 稅年</span>
+        <button class="btn-icon" id="btnQuickBackup" title="快速備份 JSON">💾</button>
+      </div>
+    </header>
+
+    <div class="main-content">
+
+      <!-- ── DASHBOARD ── -->
+      <section class="tab-pane active" id="tab-dashboard">
+
+        <!-- KOR Hero -->
+        <div class="kor-hero" id="korHero">
+          <div class="kor-hero-left">
+            <div class="kor-hero-eyebrow">
+              <span class="kor-dot" id="korDot"></span>
+              KOR 年度營業額監控（2026）
+            </div>
+            <div class="kor-hero-amount">
+              <span id="korHeroValue">€0</span>
+              <span class="kor-hero-limit">/ €20,000</span>
+            </div>
+            <div class="kor-bar-wrap">
+              <div class="kor-bar-fill" id="korBarFill" style="width:0%"></div>
+              <div class="kor-marker" style="left:70%" title="70% 警戒"></div>
+              <div class="kor-marker" style="left:85%" title="85% 警告"></div>
+              <div class="kor-marker kor-marker-red" style="left:95%" title="95% 緊急"></div>
+            </div>
+            <div class="kor-bar-labels">
+              <span>€0</span><span>€5K</span><span>€10K</span><span>€15K</span><span>€20K</span>
+            </div>
+            <div class="kor-hero-caption" id="korHeroCaption">目前安全，繼續保持。</div>
+          </div>
+          <div class="kor-hero-stats">
+            <div class="kor-stat-item">
+              <div class="kor-stat-label">剩餘空間</div>
+              <div class="kor-stat-val success" id="korRemaining">€20,000</div>
+            </div>
+            <div class="kor-stat-item">
+              <div class="kor-stat-label">本年銷售筆數</div>
+              <div class="kor-stat-val" id="korSalesCount">0 筆</div>
+            </div>
+            <div class="kor-stat-item">
+              <div class="kor-stat-label">KOR 狀態</div>
+              <div class="kor-stat-val" id="korStatus">✅ 正常</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon">📦</div>
+            <div>
+              <div class="stat-label">在庫總張數</div>
+              <div class="stat-value" id="statCards">0 張</div>
+              <div class="stat-sub" id="statCardsCost">帳面成本 €0</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">💹</div>
+            <div>
+              <div class="stat-label">本年毛利</div>
+              <div class="stat-value" id="statGP">€0</div>
+              <div class="stat-sub" id="statGPMargin">毛利率 —</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">💸</div>
+            <div>
+              <div class="stat-label">本年業務費用</div>
+              <div class="stat-value" id="statExp">€0</div>
+              <div class="stat-sub">不計入 KOR</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🧾</div>
+            <div>
+              <div class="stat-label">稅前利潤（估算）</div>
+              <div class="stat-value" id="statNet">€0</div>
+              <div class="stat-sub">毛利 − 費用</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent + Deadlines -->
+        <div class="two-col-grid">
+          <div class="card">
+            <div class="card-hd">
+              <span class="card-title">最近交易</span>
+              <button class="btn-link" data-tab="sales">查看全部 →</button>
+            </div>
+            <div id="dashRecentList"><p class="empty-sm">尚無交易記錄</p></div>
+          </div>
+          <div class="card">
+            <div class="card-hd"><span class="card-title">📅 報稅截止日</span></div>
+            <div id="dashDeadlines"></div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ── INVENTORY ── -->
+      <section class="tab-pane" id="tab-inventory">
+        <div class="toolbar">
+          <div class="toolbar-l">
+            <input type="search" id="invSearch" class="search-inp" placeholder="搜尋卡名、系列…"/>
+            <select id="invFilter" class="sel-inp">
+              <option value="all">全部狀態</option>
+              <option value="in_stock">在庫</option>
+              <option value="grading">送評中</option>
+              <option value="sold">已售出（含）</option>
+            </select>
+          </div>
+          <div class="toolbar-r">
+            <button class="btn-secondary" id="btnAddCardType">＋ 新增卡種</button>
+          </div>
+        </div>
+        <div class="inv-summary" id="invSummary">
+          在庫 <strong id="invInStockCount">0</strong> 種・
+          <strong id="invInStockQty">0</strong> 張・
+          帳面成本 <strong id="invCostTotal">€0</strong>・
+          市值（管理用）<strong id="invMarketTotal">€0</strong>
+        </div>
+        <div id="invList" class="inv-list"></div>
+      </section>
+
+      <!-- ── SALES ── -->
+      <section class="tab-pane" id="tab-sales">
+        <div class="toolbar">
+          <div class="toolbar-l">
+            <select id="salesYearSel" class="sel-inp">
+              <option value="2026">2026 年</option>
+              <option value="2025">2025 年</option>
+            </select>
+            <select id="salesPlatformSel" class="sel-inp">
+              <option value="all">全部平台</option>
+              <option value="cardmarket">Cardmarket</option>
+              <option value="vinted">Vinted</option>
+              <option value="inperson">現場</option>
+            </select>
+          </div>
+          <div class="toolbar-r">
+            <button class="btn-primary" id="btnAddSale">＋ 記錄銷售</button>
+          </div>
+        </div>
+        <div class="summary-bar" id="salesSummaryBar"></div>
+        <div id="salesTableWrap"></div>
+      </section>
+
+      <!-- ── PURCHASES ── -->
+      <section class="tab-pane" id="tab-purchases">
+        <div class="toolbar">
+          <div class="toolbar-r">
+            <button class="btn-primary" id="btnAddPurchase">＋ 新增進貨批次</button>
+          </div>
+        </div>
+        <div id="purchasesTableWrap"></div>
+      </section>
+
+      <!-- ── EXPENSES ── -->
+      <section class="tab-pane" id="tab-expenses">
+        <div class="toolbar">
+          <div class="toolbar-l">
+            <select id="expCatFilter" class="sel-inp">
+              <option value="all">全部類別</option>
+              <option value="packaging">包材 / 運費</option>
+              <option value="platform_fee">平台費</option>
+              <option value="grading_fee">評級費</option>
+              <option value="mileage">里程費</option>
+              <option value="travel">出差費</option>
+              <option value="accountant">會計師費</option>
+              <option value="office">辦公用品</option>
+              <option value="other">其他</option>
+            </select>
+          </div>
+          <div class="toolbar-r">
+            <button class="btn-primary" id="btnAddExpense">＋ 新增費用</button>
+          </div>
+        </div>
+        <div class="summary-bar" id="expSummaryBar"></div>
+        <div id="expTableWrap"></div>
+      </section>
+
+      <!-- ── REPORTS ── -->
+      <section class="tab-pane" id="tab-reports">
+        <div class="toolbar">
+          <div class="toolbar-l">
+            <select id="reportsYearSel" class="sel-inp">
+              <option value="2026">2026 年度</option>
+              <option value="2025">2025 年度</option>
+            </select>
+          </div>
+          <div class="toolbar-r">
+            <button class="btn-secondary" id="btnExportZip">📦 匯出查稅證據包</button>
+            <button class="btn-primary" id="btnPrintReport">🖨️ 列印 / PDF</button>
+          </div>
+        </div>
+        <div id="reportsContent"></div>
+      </section>
+
+      <!-- ── CALENDAR ── -->
+      <section class="tab-pane" id="tab-calendar">
+        <div id="calendarContent"></div>
+      </section>
+
+      <!-- ── SETTINGS ── -->
+      <section class="tab-pane" id="tab-settings">
+        <div class="settings-grid">
+
+          <div class="card">
+            <div class="card-title">🏢 公司資料</div>
+            <div class="form-group">
+              <label>公司名稱</label>
+              <input type="text" id="setCompanyName" class="form-inp" placeholder="你的公司名稱"/>
+            </div>
+            <div class="form-group">
+              <label>KVK 號碼</label>
+              <input type="text" id="setKvk" class="form-inp" placeholder="12345678"/>
+            </div>
+            <div class="form-group">
+              <label>KOR 開始日期</label>
+              <input type="date" id="setKorStart" class="form-inp"/>
+            </div>
+            <div class="form-group">
+              <label>目前稅年</label>
+              <select id="setFiscalYear" class="form-inp">
+                <option value="2024">2024</option>
+                <option value="2025">2025</option>
+                <option value="2026" selected>2026</option>
+                <option value="2027">2027</option>
+              </select>
+            </div>
+            <button class="btn-primary" id="btnSaveSettings">儲存設定</button>
+          </div>
+
+          <div class="card">
+            <div class="card-title">💾 備份與還原</div>
+            <p class="card-desc">建議每次記帳後匯出 JSON 到 Google Drive 或 iCloud。</p>
+            <div class="backup-btns">
+              <button class="btn-primary" id="btnExportJson">📤 匯出 JSON 備份</button>
+              <label class="btn-secondary label-btn">
+                📥 匯入 JSON 備份
+                <input type="file" id="importFile" accept=".json" style="display:none"/>
+              </label>
+            </div>
+            <div class="backup-meta" id="backupMeta">—</div>
+          </div>
+
+          <div class="card card-danger">
+            <div class="card-title danger-title">⚠️ 危險區域</div>
+            <p class="card-desc">以下操作無法復原，請先備份。</p>
+            <button class="btn-danger" id="btnResetAll">🗑️ 清除所有資料</button>
+          </div>
+
+        </div>
+      </section>
+
+    </div><!-- /main-content -->
+  </div><!-- /main-wrap -->
+</div><!-- /app-layout -->
+
+<!-- ═══ MODALS ═══ -->
+
+<!-- Add / Edit Card Type -->
+<div class="modal-overlay" id="mCardType">
+  <div class="modal modal-lg">
+    <div class="modal-hd">
+      <h2 id="mCardTypeTitle">新增卡種</h2>
+      <button class="modal-x" data-close="mCardType">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <input type="hidden" id="ctEditId"/>
+      <div class="form-row">
+        <div class="form-group flex2">
+          <label>卡名 <span class="req">*</span></label>
+          <input type="text" id="ctName" class="form-inp" placeholder="例如：Charizard Base Set (Shadowless)"/>
+        </div>
+        <div class="form-group">
+          <label>系列（Set）</label>
+          <input type="text" id="ctSet" class="form-inp" placeholder="Base Set"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>語言</label>
+          <select id="ctLanguage" class="form-inp">
+            <option value="EN">英文 EN</option>
+            <option value="JP">日文 JP</option>
+            <option value="ZH">中文 ZH</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>條件</label>
+          <select id="ctCondition" class="form-inp">
+            <option value="PSA10">PSA 10</option>
+            <option value="PSA9">PSA 9</option>
+            <option value="CGC10">CGC 10 Prim</option>
+            <option value="raw_NM">Raw NM</option>
+            <option value="raw_LP">Raw LP</option>
+            <option value="raw_MP">Raw MP</option>
+            <option value="raw_HP">Raw HP</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>當前市值（管理用，EUR）</label>
+          <input type="number" id="ctMarketValue" class="form-inp" placeholder="0" min="0" step="0.01"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>備註</label>
+        <input type="text" id="ctNotes" class="form-inp" placeholder="任何備註…"/>
+      </div>
+
+      <div class="divider-label">初始批次（選填）</div>
+      <p class="hint-text">現在手上有這種卡，可同時新增第一批庫存。</p>
+      <div class="form-row" id="ctInitLotRow">
+        <div class="form-group">
+          <label>數量</label>
+          <input type="number" id="ctLotQty" class="form-inp" placeholder="0" min="0" step="1"/>
+        </div>
+        <div class="form-group">
+          <label>成本/張（EUR）</label>
+          <input type="number" id="ctLotCostEur" class="form-inp" placeholder="0.00" min="0" step="0.01"/>
+        </div>
+        <div class="form-group">
+          <label>入帳日期</label>
+          <input type="date" id="ctLotDate" class="form-inp"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>來源</label>
+          <select id="ctLotSource" class="form-inp">
+            <option value="initial">期初庫存（投入公司）</option>
+            <option value="nl_inperson">荷蘭現場收購</option>
+            <option value="tw_social">台灣社團交易</option>
+            <option value="cardmarket">Cardmarket 購買</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>原始幣別</label>
+          <select id="ctLotCurrency" class="form-inp">
+            <option value="EUR">EUR</option>
+            <option value="TWD">TWD</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+        <div class="form-group" id="ctFxGroup" style="display:none">
+          <label>原始金額</label>
+          <input type="number" id="ctLotOrigAmt" class="form-inp" placeholder="0"/>
+        </div>
+        <div class="form-group" id="ctFxRateGroup" style="display:none">
+          <label>匯率（→EUR）</label>
+          <input type="number" id="ctLotFxRate" class="form-inp" placeholder="0.0000" step="0.0001"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>佐證截圖（市值截圖 + 收據）</label>
+        <div class="upload-zone" id="ctUploadZone">
+          <input type="file" id="ctLotFiles" multiple accept="image/*,application/pdf" style="display:none"/>
+          <label for="ctLotFiles" class="upload-lbl">📎 點擊上傳截圖（JPG / PNG / PDF）</label>
+        </div>
+        <div id="ctFileList" class="file-chips"></div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn-secondary" data-close="mCardType">取消</button>
+      <button class="btn-primary" id="btnSaveCardType">儲存卡種</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Lot (to existing card type) -->
+<div class="modal-overlay" id="mAddLot">
+  <div class="modal">
+    <div class="modal-hd">
+      <h2>新增進貨批次</h2>
+      <button class="modal-x" data-close="mAddLot">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <input type="hidden" id="lotCardTypeId"/>
+      <div class="form-group">
+        <label>卡種</label>
+        <div class="form-readonly" id="lotCardTypeName">—</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>數量 <span class="req">*</span></label>
+          <input type="number" id="lotQty" class="form-inp" placeholder="0" min="1" step="1"/>
+        </div>
+        <div class="form-group">
+          <label>成本/張（EUR）<span class="req">*</span></label>
+          <input type="number" id="lotCostEur" class="form-inp" placeholder="0.00" min="0" step="0.01"/>
+        </div>
+        <div class="form-group">
+          <label>進貨日期 <span class="req">*</span></label>
+          <input type="date" id="lotDate" class="form-inp"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>來源類型</label>
+          <select id="lotSource" class="form-inp">
+            <option value="nl_inperson">荷蘭現場收購</option>
+            <option value="tw_social">台灣社團交易</option>
+            <option value="cardmarket">Cardmarket</option>
+            <option value="initial">期初庫存</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>原始幣別</label>
+          <select id="lotCurrency" class="form-inp">
+            <option value="EUR">EUR</option>
+            <option value="TWD">TWD</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row" id="lotFxRow" style="display:none">
+        <div class="form-group">
+          <label>原始總金額</label>
+          <input type="number" id="lotOrigAmt" class="form-inp" placeholder="0"/>
+        </div>
+        <div class="form-group">
+          <label>匯率（→EUR/張）</label>
+          <input type="number" id="lotFxRate" class="form-inp" placeholder="0.0000" step="0.0001"/>
+        </div>
+      </div>
+      <div class="receipt-hint" id="lotReceiptHint"></div>
+      <div class="form-group">
+        <label>佐證截圖</label>
+        <div class="upload-zone">
+          <input type="file" id="lotFiles" multiple accept="image/*,application/pdf" style="display:none"/>
+          <label for="lotFiles" class="upload-lbl">📎 點擊上傳截圖（可多張）</label>
+        </div>
+        <div id="lotFileList" class="file-chips"></div>
+      </div>
+      <div class="form-group">
+        <label>備註</label>
+        <input type="text" id="lotNotes" class="form-inp" placeholder="賣家名稱、備註…"/>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn-secondary" data-close="mAddLot">取消</button>
+      <button class="btn-primary" id="btnSaveLot">儲存批次</button>
+    </div>
+  </div>
+</div>
+
+<!-- Record Sale -->
+<div class="modal-overlay" id="mRecordSale">
+  <div class="modal modal-lg">
+    <div class="modal-hd">
+      <h2>💰 記錄銷售</h2>
+      <button class="modal-x" data-close="mRecordSale">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <input type="hidden" id="salePresetCardTypeId"/>
+      <div class="form-group">
+        <label>卡種 <span class="req">*</span></label>
+        <select id="saleCardType" class="form-inp">
+          <option value="">— 選擇卡種 —</option>
+        </select>
+      </div>
+
+      <div class="fifo-box" id="fifoBox" style="display:none">
+        <div class="fifo-box-title">🔄 FIFO 成本預覽</div>
+        <div id="fifoBoxContent"></div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>數量 <span class="req">*</span></label>
+          <input type="number" id="saleQty" class="form-inp" value="1" min="1" step="1"/>
+        </div>
+        <div class="form-group">
+          <label>售價（EUR）<span class="req">*</span></label>
+          <input type="number" id="salePriceEur" class="form-inp" placeholder="0.00" min="0" step="0.01"/>
+        </div>
+        <div class="form-group">
+          <label>銷售日期 <span class="req">*</span></label>
+          <input type="date" id="saleDate" class="form-inp"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>平台</label>
+          <select id="salePlatform" class="form-inp">
+            <option value="cardmarket">Cardmarket</option>
+            <option value="vinted">Vinted</option>
+            <option value="inperson">現場交易</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>平台手續費（EUR）</label>
+          <input type="number" id="saleFee" class="form-inp" placeholder="0.00" min="0" step="0.01"/>
+        </div>
+        <div class="form-group">
+          <label>買家國別</label>
+          <select id="saleBuyerCountry" class="form-inp">
+            <option value="NL">🇳🇱 荷蘭</option>
+            <option value="BE">🇧🇪 比利時</option>
+            <option value="DE">🇩🇪 德國</option>
+            <option value="FR">🇫🇷 法國</option>
+            <option value="EU_other">其他歐盟</option>
+            <option value="non_EU">非歐盟</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>PSA / CGC Cert 號碼（選填）</label>
+        <input type="text" id="saleCert" class="form-inp" placeholder="cert 號碼（出售特定評級卡時填寫）"/>
+      </div>
+
+      <div class="oss-warning" id="ossWarn" style="display:none">
+        ⚠️ 非荷蘭買家：KOR 不涵蓋跨境 VAT（OSS）義務，建議向會計師確認是否需申報 OSS。
+      </div>
+
+      <div class="profit-preview" id="profitPreview">
+        <div class="pp-row"><span>售價</span><span id="pp-price">—</span></div>
+        <div class="pp-row pp-deduct"><span>－ 平台手續費</span><span id="pp-fee">—</span></div>
+        <div class="pp-row pp-deduct"><span>－ COGS（FIFO）</span><span id="pp-cogs">—</span></div>
+        <div class="pp-row pp-total"><span>毛利</span><span id="pp-gp">—</span></div>
+      </div>
+
+      <div class="form-group">
+        <label>截圖佐證</label>
+        <div class="upload-zone">
+          <input type="file" id="saleFiles" multiple accept="image/*" style="display:none"/>
+          <label for="saleFiles" class="upload-lbl">📎 上傳訂單截圖</label>
+        </div>
+        <div id="saleFileList" class="file-chips"></div>
+      </div>
+      <div class="form-group">
+        <label>備註</label>
+        <input type="text" id="saleNotes" class="form-inp" placeholder="備註…"/>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn-secondary" data-close="mRecordSale">取消</button>
+      <button class="btn-primary" id="btnSaveSale">確認記錄銷售</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Expense -->
+<div class="modal-overlay" id="mAddExpense">
+  <div class="modal">
+    <div class="modal-hd">
+      <h2>新增費用記錄</h2>
+      <button class="modal-x" data-close="mAddExpense">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <div class="form-row">
+        <div class="form-group">
+          <label>費用日期 <span class="req">*</span></label>
+          <input type="date" id="expDate" class="form-inp"/>
+        </div>
+        <div class="form-group">
+          <label>費用類別 <span class="req">*</span></label>
+          <select id="expCategory" class="form-inp">
+            <option value="packaging">📦 包材 / 運費（寄貨）</option>
+            <option value="platform_fee">🖥️ 平台費</option>
+            <option value="grading_fee">🏅 評級費（PSA/CGC）</option>
+            <option value="mileage">🚗 里程費（€0.25/km）</option>
+            <option value="travel">✈️ 出差費</option>
+            <option value="accountant">📊 會計師費</option>
+            <option value="office">🖊️ 辦公用品</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row mileage-row" id="mileageRow" style="display:none">
+        <div class="form-group">
+          <label>公里數（km）</label>
+          <input type="number" id="expKm" class="form-inp" placeholder="0" min="0" step="0.1"/>
+        </div>
+        <div class="form-group">
+          <label>自動計算（€0.25/km）</label>
+          <div class="form-readonly" id="expMileageCalc">€ —</div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>金額（EUR）<span class="req">*</span></label>
+          <input type="number" id="expAmount" class="form-inp" placeholder="0.00" min="0" step="0.01"/>
+        </div>
+        <div class="form-group flex2">
+          <label>說明 <span class="req">*</span></label>
+          <input type="text" id="expDesc" class="form-inp" placeholder="例如：PostNL pakket"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>用途</label>
+        <div class="radio-row">
+          <label class="radio-opt"><input type="radio" name="expPrivate" value="false" checked/> ✅ 業務用（可申報）</label>
+          <label class="radio-opt"><input type="radio" name="expPrivate" value="true"/> ❌ 私人（不申報）</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>截圖佐證</label>
+        <div class="upload-zone">
+          <input type="file" id="expFiles" multiple accept="image/*,application/pdf" style="display:none"/>
+          <label for="expFiles" class="upload-lbl">📎 上傳收據截圖</label>
+        </div>
+        <div id="expFileList" class="file-chips"></div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn-secondary" data-close="mAddExpense">取消</button>
+      <button class="btn-primary" id="btnSaveExpense">儲存費用</button>
+    </div>
+  </div>
+</div>
+
+<!-- Card Detail -->
+<div class="modal-overlay" id="mCardDetail">
+  <div class="modal modal-xl">
+    <div class="modal-hd">
+      <div>
+        <h2 id="detailTitle">—</h2>
+        <div class="modal-subtitle" id="detailMeta">—</div>
+      </div>
+      <button class="modal-x" data-close="mCardDetail">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <input type="hidden" id="detailCardTypeId"/>
+      <div class="detail-section-hd">
+        <span>📦 批次庫存（FIFO 順序）</span>
+        <div>
+          <button class="btn-secondary btn-sm" id="btnDetailAddLot">＋ 新增批次</button>
+          <button class="btn-primary btn-sm" id="btnDetailSell">💰 標記售出</button>
+        </div>
+      </div>
+      <div id="detailLots"></div>
+
+      <div class="detail-section-hd" style="margin-top:1.5rem">
+        <span>💰 銷售歷史</span>
+      </div>
+      <div id="detailSales"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Image Viewer -->
+<div class="modal-overlay" id="mImageViewer">
+  <div class="modal modal-img">
+    <div class="modal-hd">
+      <span id="imgViewerTitle">截圖預覽</span>
+      <button class="modal-x" data-close="mImageViewer">&times;</button>
+    </div>
+    <div class="modal-bd img-viewer-bd">
+      <img id="imgViewerImg" src="" alt="截圖"/>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm -->
+<div class="modal-overlay" id="mConfirm">
+  <div class="modal modal-sm">
+    <div class="modal-hd"><h2 id="confirmTitle">確認</h2></div>
+    <div class="modal-bd"><p id="confirmMsg"></p></div>
+    <div class="modal-ft">
+      <button class="btn-secondary" id="btnConfirmCancel">取消</button>
+      <button class="btn-danger" id="btnConfirmOk">確認</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toastContainer" class="toast-container"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
