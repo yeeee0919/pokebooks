@@ -359,8 +359,11 @@ const CardmarketView = (() => {
   -H "Authorization: Bearer $CARDMARKET_INGEST_TOKEN" \\
   -H "Content-Type: application/json" \\
   --data-binary @latest.json</pre>
-      <p class="empty-desc">或執行 <span class="mono">node scripts/push-cardmarket-snapshot.mjs latest.json</span>。已登入時也可以直接選檔上傳。</p>
-      <label class="btn-secondary cm-upload">上傳 latest.json<input id="cmFile" type="file" accept="application/json,.json" hidden/></label>
+      <p class="empty-desc">或執行 <span class="mono">node scripts/push-cardmarket-snapshot.mjs latest.json</span>。已登入時也可以直接選檔上傳。上傳後按重新整理。</p>
+      <div class="cm-actions">
+        <button type="button" class="btn-secondary" id="cmReload">重新整理</button>
+        <label class="btn-secondary cm-upload">上傳 latest.json<input id="cmFile" type="file" accept="application/json,.json" hidden/></label>
+      </div>
     </div>`;
   }
 

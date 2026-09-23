@@ -3842,7 +3842,7 @@ function renderTab(tab) {
     case 'reports':         renderReports();                break;
     case 'calendar':        renderCalendar();               break;
     case 'documents':       renderDocuments();              break;
-    case 'cardmarket':      renderCardmarket();             break;
+    case 'cardmarket':      renderCardmarket({ reload: true }); break;
     case 'settings':        renderSettings();               break;
   }
 }

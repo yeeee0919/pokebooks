@@ -144,7 +144,9 @@ assert(html.includes('Deckpoint'), 'renders confirmed sale');
 assert(html.includes('BKollector'), 'renders cancellation');
 assert(html.includes('&lt;script&gt;') === false, 'script title replaced by zh name');
 assert(!html.includes('<script>'), 'no raw script tag');
-assert(View.renderEmpty().includes('CARDMARKET_INGEST_TOKEN'), 'empty state names ingest env');
+const emptyHtml = View.renderEmpty();
+assert(emptyHtml.includes('CARDMARKET_INGEST_TOKEN'), 'empty state names ingest env');
+assert(emptyHtml.includes('id="cmReload"'), 'empty state can refresh after ingest');
 
 const filtered = View.visibleCards(m.cards, { status: 'no_offers', q: '' });
 assert(filtered.length === 1 && filtered[0].sealed_only, 'filter no_offers');
