@@ -21,7 +21,7 @@ const RANGES = [
 ];
 
 const SOURCES = [
-  { id: "legacy", label: "舊家", color: "#0052ff" },
+  { id: "legacy", label: "舊家", color: "#d97706" },
   { id: "samurai_shrink", label: "有膜", color: "#05b169" },
   { id: "samurai_noshrink", label: "無膜", color: "#7a5af8" },
 ];
@@ -711,20 +711,19 @@ function sourceControls() {
 function shell(content) {
   const route = state.route.name;
   return `<div class="shell">
-    <header class="topnav">
-      <a class="brand" href="#/">
-        <span class="brand-mark" aria-hidden="true"></span>
+    <main class="page">
+      <div class="product-subbar">
         <div>
+          <p class="product-kicker">進價</p>
           <h1>供應商進價</h1>
-          <p>Pokemon TCG · JPY / TWD</p>
         </div>
-      </a>
-      <nav class="nav-links">
-        <button class="nav-link ${route === "home" ? "active" : ""}" data-nav="home">首頁</button>
-        <button class="nav-link ${route === "catalog" ? "active" : ""}" data-nav="catalog">全部商品</button>
-      </nav>
-    </header>
-    <main class="page">${content}</main>
+        <nav class="nav-links" aria-label="進價">
+          <button class="nav-link ${route === "home" ? "active" : ""}" data-nav="home" type="button">首頁</button>
+          <button class="nav-link ${route === "catalog" ? "active" : ""}" data-nav="catalog" type="button">全部商品</button>
+        </nav>
+      </div>
+      ${content}
+    </main>
   </div>`;
 }
 
