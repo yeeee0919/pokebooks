@@ -3668,6 +3668,101 @@ function updateKor() {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  CARDMARKET
+// ══════════════════════════════════════════════════════════════
+let _cmCache = null;
+let _cmDate = '';
+let _cmQuery = '';
+let _cmStatus = 'all';
+let _cmReq = 0;
+
+async function renderCardmarket(opts = {}) {
+  const root = q('cardmarketRoot');
+  if (!root || !window.CardmarketView) return;
+  const reload = !!(opts.reload || !_cmCache);
+  if (reload) {
+    const reqId = ++_cmReq;
+    root.innerHTML = '<p class="cm-loading">載入市價快照…</p>';
+    try {
+      const data = await PokeApi.getCardmarket(_cmDate || '');
+      if (reqId !== _cmReq) return;
+      _cmCache = data;
+    } catch (e) {
+      if (reqId !== _cmReq) return;
+      _cmCache = null;
+      const msg = e.status === 401 ? '請先登入後才能看市價快照。' : (e.message || '無法載入');
+      root.innerHTML = CardmarketView.renderError(msg);
+      return;
+    }
+  }
+  const search = document.activeElement && document.activeElement.id === 'cmSearch'
+    ? document.activeElement : null;
+  const sel = search ? [search.selectionStart, search.selectionEnd] : null;
+  root.innerHTML = CardmarketView.renderPage(_cmCache, {
+    q: _cmQuery,
+    status: _cmStatus,
+    selected: _cmDate,
+  });
+  if (sel) {
+    const inp = q('cmSearch');
+    if (inp) {
+      inp.focus();
+      inp.setSelectionRange(sel[0], sel[1]);
+    }
+  }
+}
+
+async function uploadCardmarketFile(file) {
+  let body;
+  try {
+    body = JSON.parse(await file.text());
+  } catch (e) {
+    toast('不是有效的 JSON', 'e');
+    return;
+  }
+  try {
+    const saved = await PokeApi.putCardmarket(body);
+    _cmDate = saved?.date || '';
+    _cmCache = null;
+    toast('已上傳 ' + (_cmDate || '快照'), 's');
+    await renderCardmarket({ reload: true });
+  } catch (e) {
+    toast(e.message || '上傳失敗', 'e');
+  }
+}
+
+function wireCardmarket() {
+  const root = q('cardmarketRoot');
+  if (!root) return;
+  root.addEventListener('click', (e) => {
+    const pill = e.target.closest('[data-cm-status]');
+    if (pill) {
+      _cmStatus = pill.dataset.cmStatus || 'all';
+      renderCardmarket();
+      return;
+    }
+    if (e.target.closest('#cmReload')) renderCardmarket({ reload: true });
+  });
+  root.addEventListener('input', (e) => {
+    if (e.target.id !== 'cmSearch') return;
+    _cmQuery = e.target.value;
+    renderCardmarket();
+  });
+  root.addEventListener('change', (e) => {
+    if (e.target.id === 'cmDate') {
+      _cmDate = e.target.value;
+      renderCardmarket({ reload: true });
+      return;
+    }
+    if (e.target.id === 'cmFile' && e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      e.target.value = '';
+      uploadCardmarketFile(file);
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
 //  NAVIGATION
 // ══════════════════════════════════════════════════════════════
 const TAB_TITLES = {
@@ -3681,6 +3776,7 @@ const TAB_TITLES = {
   reports:          '損益報表',
   calendar:         '報稅行事曆',
   documents:        '相關文件',
+  cardmarket:       'Cardmarket 市價監控',
   settings:         '設定 & 備份',
 };
 
@@ -3746,6 +3842,7 @@ function renderTab(tab) {
     case 'reports':         renderReports();                break;
     case 'calendar':        renderCalendar();               break;
     case 'documents':       renderDocuments();              break;
+    case 'cardmarket':      renderCardmarket();             break;
     case 'settings':        renderSettings();               break;
   }
 }
@@ -7360,6 +7457,7 @@ function wireEvents() {
   q('btnLogout')?.addEventListener('click', doLogout);
   q('btnTgPair')?.addEventListener('click', doTelegramPair);
   q('btnInboxReload')?.addEventListener('click', () => renderInbox());
+  wireCardmarket();
 
   document.querySelectorAll('[data-inv-ccy]').forEach(btn => {
     btn.addEventListener('click', () => setInvDisplayCurrency(btn.dataset.invCcy));

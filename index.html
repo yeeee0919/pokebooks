@@ -23,7 +23,7 @@
         <span class="brand-sub">擁有者登入</span>
       </div>
     </div>
-    <p class="login-note">活帳在歐盟後端。沒登入看不到庫存、報表、待補。</p>
+    <p class="login-note">活帳在歐盟後端。沒登入看不到庫存、報表、待補、市價。</p>
     <div class="fg"><label>密碼</label><input type="password" id="loginPassword" class="finp" autocomplete="current-password"/></div>
     <p class="login-err" id="loginErr" hidden></p>
     <button class="btn-primary" id="btnLogin" style="width:100%">登入</button>
@@ -46,6 +46,7 @@
       <nav class="nav">
         <a class="nav-link active" data-tab="dashboard"><span class="nav-ico">📊</span><span>儀表板</span></a>
         <a class="nav-link" data-tab="inventory"><span class="nav-ico">📦</span><span>庫存</span></a>
+        <a class="nav-link" data-tab="cardmarket"><span class="nav-ico">📈</span><span>市價</span></a>
         <a class="nav-link" data-tab="transactions"><span class="nav-ico">↕️</span><span>交易</span></a>
         <a class="nav-link" data-tab="expenses"><span class="nav-ico">💸</span><span>費用</span></a>
         <a class="nav-link" data-tab="inbox"><span class="nav-ico">📥</span><span>待補</span></a>
@@ -316,6 +317,11 @@
       <!-- ── DOCUMENTS ── -->
       <div class="view" id="view-documents">
         <div id="docsContent"></div>
+      </div>
+
+      <!-- ── CARDMARKET ── -->
+      <div class="view" id="view-cardmarket">
+        <div id="cardmarketRoot"></div>
       </div>
 
       <!-- ── SETTINGS ── -->
@@ -848,6 +854,7 @@
 <script src="ledger.js"></script>
 <script src="btw.js"></script>
 <script src="client-api.js"></script>
+<script src="cardmarket.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
