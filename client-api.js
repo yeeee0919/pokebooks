@@ -30,5 +30,7 @@ const PokeApi = (() => {
     pairStatus: () => req('/api/pair'),
     pairStart: () => req('/api/pair', { method: 'POST' }),
     photoUrl: (id) => `/api/photos/${encodeURIComponent(id)}`,
+    getCardmarket: (date) => req('/api/cardmarket' + (date ? ('?date=' + encodeURIComponent(date)) : '')),
+    putCardmarket: (snapshot) => req('/api/cardmarket', { method: 'PUT', body: JSON.stringify(snapshot) }),
   };
 })();
