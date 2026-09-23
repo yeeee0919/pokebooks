@@ -7922,11 +7922,20 @@ async function bootLedger() {
 
 async function enterApp() {
   hideLoginGate();
+  const params = new URLSearchParams(location.search);
+  const next = params.get('next') || '';
+  if (next.startsWith('/prices') && !next.startsWith('//')) {
+    location.replace(next);
+    return;
+  }
   const seeded = await bootLedger();
   _apiReady = true;
   if (seeded) save();
   updateKor();
-  switchTab(currentTab() || 'dashboard');
+  const tab = params.get('tab');
+  if (tab && Object.prototype.hasOwnProperty.call(TAB_TITLES, tab)) switchTab(tab);
+  else switchTab(currentTab() || 'dashboard');
+  if (tab) history.replaceState(null, '', location.pathname);
   await initCloud();
   maybeToastTaxDeadline();
 }

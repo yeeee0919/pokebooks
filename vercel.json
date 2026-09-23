@@ -1,5 +1,6 @@
 {
   "functions": {
-    "api/telegram.js": { "maxDuration": 60 }
+    "api/telegram.js": { "maxDuration": 60 },
+    "api/prices.js": { "includeFiles": "data/supplier-history.json" }
   }
 }

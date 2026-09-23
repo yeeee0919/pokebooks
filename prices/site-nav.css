@@ -1,0 +1,97 @@
+.product-nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 56px;
+  padding: 0.45rem 0.9rem;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  font-family: Outfit, "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+}
+
+.product-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.product-brand-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #d97706, #b45309);
+  font-size: 1.25rem;
+}
+
+.product-brand-name {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #d97706;
+  line-height: 1.1;
+}
+
+.product-brand-sub {
+  display: block;
+  font-size: 0.55rem;
+  color: #64748b;
+}
+
+.product-links {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.product-links::-webkit-scrollbar {
+  display: none;
+}
+
+.product-links a {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.42rem 0.55rem;
+  border-radius: 6px;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.product-links a:hover {
+  color: #475569;
+  background: #f8fafc;
+}
+
+.product-links a.active {
+  position: relative;
+  color: #d97706;
+  font-weight: 700;
+  background: rgba(232, 184, 75, 0.12);
+}
+
+.product-links a.active::after {
+  content: "";
+  position: absolute;
+  left: 0.45rem;
+  right: 0.45rem;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: #d97706;
+}

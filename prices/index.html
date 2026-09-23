@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>進價 — PokeLedger</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Outfit:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./site-nav.css" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="product-nav">
+      <a class="product-brand" href="/">
+        <span class="product-brand-icon" aria-hidden="true">🃏</span>
+        <span>
+          <span class="product-brand-name">PokeLedger</span>
+          <span class="product-brand-sub">卡牌記帳系統</span>
+        </span>
+      </a>
+      <nav class="product-links" aria-label="產品">
+        <a href="/"><span>📊</span><span>儀表板</span></a>
+        <a href="/?tab=inventory"><span>📦</span><span>庫存</span></a>
+        <a href="/?tab=transactions"><span>↕️</span><span>交易</span></a>
+        <a href="/?tab=expenses"><span>💸</span><span>費用</span></a>
+        <a href="/?tab=inbox"><span>📥</span><span>待補</span></a>
+        <a href="/?tab=reports"><span>📋</span><span>損益</span></a>
+        <a href="/?tab=calendar"><span>📅</span><span>行事曆</span></a>
+        <a href="/?tab=documents"><span>📁</span><span>文件</span></a>
+        <a href="/?tab=settings"><span>⚙️</span><span>設定</span></a>
+        <a class="active" href="/prices/" aria-current="page"><span>💴</span><span>進價</span></a>
+      </nav>
+    </header>
+    <div id="tooltip" class="tooltip" hidden></div>
+    <div id="app"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
