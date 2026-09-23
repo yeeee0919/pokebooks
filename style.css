@@ -153,6 +153,35 @@ input, select { font-family: var(--font); }
   height: 2px; width: auto; background: var(--gold); border-radius: 2px 2px 0 0;
 }
 
+/* Special entrances — kept apart from the ledger tabs */
+.nav-portals {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  margin-right: .75rem;
+  padding-left: .85rem;
+  border-left: 1px solid var(--b2);
+  flex-shrink: 0;
+}
+.nav-link.nav-portal {
+  border: 1px solid var(--b2);
+  background: #fff7ed;
+  color: var(--gold2);
+  font-weight: 700;
+  border-radius: 999px;
+  padding: .32rem .7rem;
+}
+.nav-link.nav-portal:hover {
+  background: #ffedd5;
+  color: var(--gold2);
+}
+.nav-link.nav-portal.active {
+  background: var(--t1);
+  color: #fff;
+  border-color: var(--t1);
+}
+.nav-link.nav-portal.active::before { display: none; }
+
 /* ─── MAIN ─── */
 .main {
   margin-left: 0;
@@ -1606,8 +1635,8 @@ input, select { font-family: var(--font); }
 }
 @media (max-width: 860px) {
   .brand-sub { display: none; }
-  .nav-link span:not(.nav-ico) { display: none; }
-  .nav-link { padding: .45rem .5rem; }
+  .nav .nav-link span:not(.nav-ico) { display: none; }
+  .nav .nav-link { padding: .45rem .5rem; }
   .kor-pill-limit { display: none; }
   .kor-hero { flex-direction: column; gap: 1rem; }
   .kor-hero-r {

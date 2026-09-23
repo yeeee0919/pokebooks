@@ -50,6 +50,7 @@
   display: flex;
   align-items: center;
   gap: 0.15rem;
+  flex: 1;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -94,4 +95,41 @@
   height: 2px;
   border-radius: 2px 2px 0 0;
   background: #d97706;
+}
+
+.product-portals {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  padding-left: 0.85rem;
+  border-left: 1px solid #cbd5e1;
+  flex-shrink: 0;
+}
+
+.product-portals a {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.32rem 0.7rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #b45309;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.product-portals a:hover {
+  background: #ffedd5;
+  color: #b45309;
+}
+
+.product-portals a.active {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #fff;
 }
