@@ -257,10 +257,12 @@ const euroIn = (chunk, n) => {
 };
 assert(euroIn(beforeGrid, 8) && euroIn(beforeGrid, 10) && euroIn(beforeGrid, 9), 'week min max avg');
 assert(html.includes('class="drag-handle"'), 'drag handle');
-assert(html.includes('>置頂<') && html.includes('>置底<') && html.includes('aria-label="上移"') && html.includes('aria-label="下移"'), 'order buttons');
+assert(html.includes('>⬆ 置頂<') && html.includes('>↑ 上移<') && html.includes('>↓ 下移<') && html.includes('>⬇ 置底<'), 'order buttons');
+assert(html.includes('data-move="top"') && html.includes('data-move="up"') && html.includes('data-move="down"') && html.includes('data-move="bottom"'), 'data-move values');
+assert(!html.includes('data-cm-move'), 'order actions use data-move');
 assert(html.includes('data-card-key="Charizard-ex-PKMTCHSV-P-166"'), 'card key on article');
 const firstCard = html.split('<article class="cm-card')[1] || '';
-assert(/data-cm-move="top"[^>]*disabled/.test(firstCard) && /data-cm-move="up"[^>]*disabled/.test(firstCard), 'first card cannot move up');
+assert(/data-move="top"[^>]*disabled/.test(firstCard) && /data-move="up"[^>]*disabled/.test(firstCard), 'first card cannot move up');
 
 const week = View.recentConfirmed(sample);
 assert(week.start === '2026-09-17' && week.end === '2026-09-23' && week.count === 3, 'recentConfirmed window ' + JSON.stringify({ start: week.start, end: week.end, count: week.count }));
@@ -305,7 +307,7 @@ assert(View.moveCardKey(['A', 'B', 'C'], 'A', 'bottom').join() === 'B,C,A', 'mov
 assert(View.moveCardKey(['A', 'B', 'C'], 'B', 'up').join() === 'B,A,C', 'move up');
 assert(View.moveCardKey(['A', 'B', 'C'], 'B', 'down').join() === 'A,C,B', 'move down');
 assert(View.moveCardKey(['A', 'B', 'C'], 'A', 'up').join() === 'A,B,C', 'move up at edge is a no-op');
-assert(View.ORDER_KEY === 'pokeledger_cm_card_order', 'order storage key');
+assert(View.ORDER_KEY === 'cm-card-order-v1', 'order storage key matches local report');
 
 const reordered = View.renderPage({
   snapshot: sample,

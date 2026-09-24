@@ -3783,10 +3783,10 @@ function wireCardmarket() {
   const root = q('cardmarketRoot');
   if (!root) return;
   root.addEventListener('click', (e) => {
-    const move = e.target.closest('[data-cm-move]');
+    const move = e.target.closest('[data-move]');
     if (move && !move.disabled) {
-      const key = move.dataset.cmKey;
-      const dir = move.dataset.cmMove;
+      const key = move.closest('.cm-card')?.dataset.cardKey;
+      const dir = move.dataset.move;
       const grid = q('cmGrid');
       if (!grid || !key) return;
       const visible = [...grid.querySelectorAll('.cm-card')].map(el => el.dataset.cardKey).filter(Boolean);

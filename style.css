@@ -1732,7 +1732,7 @@ input, select { font-family: var(--font); }
 .cm-order-btn {
   border: 1px solid var(--b1); background: var(--s2); color: var(--t2);
   border-radius: var(--r1); font-size: .66rem; font-weight: 700;
-  padding: .16rem .38rem; line-height: 1.2;
+  padding: .16rem .38rem; line-height: 1.2; white-space: nowrap;
 }
 .cm-order-btn:hover:not(:disabled) { color: var(--t1); border-color: var(--b2); }
 .cm-order-btn:disabled { opacity: .38; cursor: default; }

@@ -406,9 +406,8 @@ const CardmarketView = (() => {
     return `<img class="cm-thumb" alt="" src="${esc(url)}" loading="lazy" referrerpolicy="no-referrer" onerror="${THUMB_ONERROR}"/>`;
   }
 
-  function orderBtn(label, dir, key, disabled, aria) {
-    const ariaAttr = aria ? ` aria-label="${esc(aria)}"` : '';
-    return `<button type="button" class="cm-order-btn" data-cm-move="${dir}" data-cm-key="${esc(key)}"${ariaAttr}${disabled ? ' disabled' : ''}>${label}</button>`;
+  function orderBtn(label, dir, disabled) {
+    return `<button type="button" class="cm-order-btn" data-move="${dir}"${disabled ? ' disabled' : ''}>${label}</button>`;
   }
 
   function cardHtml(card, index, total) {
@@ -434,10 +433,10 @@ const CardmarketView = (() => {
       <div class="cm-card-tools">
         <button type="button" class="drag-handle" aria-label="拖曳調整順序" title="拖曳調整順序">⋮⋮</button>
         <div class="cm-order-btns">
-          ${orderBtn('置頂', 'top', card.key, atTop)}
-          ${orderBtn('↑', 'up', card.key, atTop, '上移')}
-          ${orderBtn('↓', 'down', card.key, atBottom, '下移')}
-          ${orderBtn('置底', 'bottom', card.key, atBottom)}
+          ${orderBtn('⬆ 置頂', 'top', atTop)}
+          ${orderBtn('↑ 上移', 'up', atTop)}
+          ${orderBtn('↓ 下移', 'down', atBottom)}
+          ${orderBtn('⬇ 置底', 'bottom', atBottom)}
         </div>
       </div>
       <div class="cm-card-hd">
@@ -863,7 +862,7 @@ const CardmarketView = (() => {
     esc,
     safeUrl,
     safeImageUrl,
-    ORDER_KEY: 'pokeledger_cm_card_order',
+    ORDER_KEY: 'cm-card-order-v1',
     recentConfirmed,
     applyCustomOrder,
     mergeVisibleOrder,
