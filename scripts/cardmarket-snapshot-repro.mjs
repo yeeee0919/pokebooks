@@ -21,6 +21,13 @@ const sample = {
   name_zh: { 'Charizard-ex-PKMTCHSV-P-166': '噴火龍ex' },
   config: { cards: { 'Bulbasaur-V2-svG050': { name_zh: '妙蛙種子' } } },
   inferred_sales: [{
+    card_key: 'Bulbasaur-V2-svG050',
+    seller: 'ArchiveShop',
+    price: 100,
+    date: '2026-08-01',
+    status: 'confirmed',
+    isSealed: true,
+  }, {
     card_key: 'Charizard-ex-PKMTCHSV-P-166',
     seller: 'OldShop',
     price: 8,
@@ -56,7 +63,7 @@ const sample = {
     status: 'pending',
     gone_hours: 12.39,
   }],
-  inferred_sales_summary: { count: 3, pending_count: 1, min: 8, max: 10, avg: 9, sealed_count: 1, confirm_hours: 48 },
+  inferred_sales_summary: { count: 99, pending_count: 1, min: 1, max: 100, avg: 50, sealed_count: 9, confirm_hours: 48 },
   card_images: {
     'Bulbasaur-V2-svG050': 'data:image/png;base64,iVBORw0K',
     'Charizard-ex-PKMTCHSV-P-166': 'data:image/gif;base64,R0lGODdh',
@@ -212,8 +219,9 @@ const i20 = confirmed.indexOf('2026-09-20');
 assert(confirmed.includes('>日期<') || confirmed.includes('日期'), 'confirmed sales have a date column');
 assert(i23 !== -1 && i22 !== -1 && i20 !== -1 && i23 < i22 && i22 < i20, 'confirmed sales newest first ' + [i23, i22, i20]);
 assert(html.includes('OldShop') && html.includes('MidShop'), 'past inferred_sales stay visible');
-assert(html.includes('地板走勢'), 'floor history section');
-assert(html.includes('密封地板') && html.includes('裸卡地板') && html.includes('較前一日'), 'floor trend labels');
+assert(!html.includes('地板走勢') && !html.includes('cm-insight'), 'no separate floor insights panel');
+assert(!html.includes('cm-stats') && !html.includes('stat-row') && !html.includes('已確認成交') && !html.includes('成交均價'), 'summary stat boxes removed');
+assert(html.includes('密封地板') && html.includes('裸卡地板') && html.includes('較前一日'), 'per-card floor trend labels');
 assert(html.includes('cm-spark sealed') && html.includes('cm-spark raw'), 'sealed and raw sparklines');
 const up = html.includes('+€2,00') || html.includes('+€2.00');
 const down = html.includes('−€1,50') || html.includes('−€1.50') || html.includes('-€1,50') || html.includes('-€1.50');
@@ -233,5 +241,288 @@ assert(bareHtml.includes('id="cmFile"') && bareHtml.includes('id="cmDate"'), 'up
 
 const filtered = View.visibleCards(m.cards, { status: 'no_offers', q: '' });
 assert(filtered.length === 1 && filtered[0].sealed_only, 'filter no_offers');
+
+const beforeGrid = html.split('id="cmGrid"')[0];
+assert(beforeGrid.includes('最近七日成交'), 'week strip in toolbar');
+assert(beforeGrid.includes('cm-week-count') && beforeGrid.includes('>3<'), 'week count is in-window rows, not summary ' + (beforeGrid.match(/cm-week-count[\s\S]{0,80}/) || []));
+assert(!beforeGrid.includes('>99<') && !beforeGrid.includes('€50'), 'week strip ignores all-time summary');
+assert(!beforeGrid.includes('ArchiveShop') && !beforeGrid.includes('2026-08-01'), 'older sale stays out of the week strip');
+assert(beforeGrid.includes('2026-09-17') && beforeGrid.includes('2026-09-23'), 'inclusive 7-day window');
+assert(beforeGrid.includes('密封 / 裸卡') && />1 \/ 2</.test(beforeGrid), 'sealed vs raw in window');
+assert(beforeGrid.includes('最多') && beforeGrid.includes('噴火龍ex'), 'top sold card');
+assert(beforeGrid.includes('cm-week-spark') && beforeGrid.includes('cm-spark raw'), 'day count spark');
+const euroIn = (chunk, n) => {
+  const text = '€' + n.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return chunk.includes(text) || chunk.includes(text.replace(',', '.'));
+};
+assert(euroIn(beforeGrid, 8) && euroIn(beforeGrid, 10) && euroIn(beforeGrid, 9), 'week min max avg');
+assert(html.includes('class="drag-handle"'), 'drag handle');
+assert(html.includes('>⬆ 置頂<') && html.includes('>↑ 上移<') && html.includes('>↓ 下移<') && html.includes('>⬇ 置底<'), 'order buttons');
+assert(html.includes('data-move="top"') && html.includes('data-move="up"') && html.includes('data-move="down"') && html.includes('data-move="bottom"'), 'data-move values');
+assert(!html.includes('data-cm-move'), 'order actions use data-move');
+assert(html.includes('data-card-key="Charizard-ex-PKMTCHSV-P-166"'), 'card key on article');
+const firstCard = html.split('<article class="cm-card')[1] || '';
+assert(/data-move="top"[^>]*disabled/.test(firstCard) && /data-move="up"[^>]*disabled/.test(firstCard), 'first card cannot move up');
+
+const week = View.recentConfirmed(sample);
+assert(week.start === '2026-09-17' && week.end === '2026-09-23' && week.count === 3, 'recentConfirmed window ' + JSON.stringify({ start: week.start, end: week.end, count: week.count }));
+assert(week.min === 8 && week.max === 10 && week.avg === 9 && week.sealed === 1 && week.raw === 2, 'recentConfirmed prices');
+assert(week.top.key === 'Charizard-ex-PKMTCHSV-P-166' && week.top.count === 3, 'recentConfirmed top card');
+assert(week.days.length === 7 && week.days[0].date === '2026-09-17' && week.days[3].date === '2026-09-20' && week.days[3].count === 1 && week.days[6].count === 1, 'day buckets');
+
+const monthEdge = View.recentConfirmed({ date: '2026-03-01', inferred_sales: [] });
+assert(monthEdge.start === '2026-02-23' && monthEdge.end === '2026-03-01' && monthEdge.count === 0, 'window crosses month');
+const quiet = View.renderPage({
+  snapshot: { date: '2026-03-01', seller: 'x', cards: { A: { status: 'ok' } } },
+  dates: [{ date: '2026-03-01', seller: 'x' }],
+}, { q: '', status: 'all', selected: '' });
+assert(quiet.includes('這段沒有已確認成交') && !quiet.includes('cm-week-count'), 'quiet empty week, no fake zero metric');
+
+const fromScrapeWeek = View.recentConfirmed({
+  scraped_at: '2026-09-23T22:30:00Z',
+  inferred_sales: [
+    { card_key: 'A', price: 5, date: '2026-09-24' },
+    { card_key: 'B', price: 5, date: '2026-09-17' },
+    { card_key: 'C', price: 99, confirmed_at: '2026-09-23T22:30:00Z' },
+    { card_key: 'D', price: 1 },
+  ],
+});
+assert(fromScrapeWeek.anchor === '2026-09-24' && fromScrapeWeek.count === 2 && fromScrapeWeek.rows.every(r => r.card_key === 'A' || r.card_key === 'C'), 'anchor from Amsterdam scraped_at, undated row dropped ' + fromScrapeWeek.anchor + ' ' + fromScrapeWeek.count);
+
+const objectPrice = View.recentConfirmed({
+  date: '2026-09-23',
+  inferred_sales: [
+    { card_key: 'A', date: '2026-09-23', price: { price: 4 }, isSealed: true },
+    { card_key: 'B', date: '2026-09-22', price: 8 },
+  ],
+});
+assert(objectPrice.min === 4 && objectPrice.max === 8 && objectPrice.avg === 6 && objectPrice.sealed === 1 && objectPrice.raw === 1, 'week accepts offer price objects');
+
+const ordered = View.applyCustomOrder(m.cards, ['Bulbasaur-V2-svG050', 'missing', 'Charizard-ex-PKMTCHSV-P-166']);
+assert(ordered.map(c => c.key).join() === 'Bulbasaur-V2-svG050,Charizard-ex-PKMTCHSV-P-166,Arceus-Dialga-Palkia-GX-PKMTCHSV-P-158', 'custom order, unseen appends');
+const merged = View.mergeVisibleOrder(['C', 'A', 'B'], ['A', 'B', 'C', 'D'], ['B', 'A']);
+assert(merged.join() === 'C,B,A,D', 'merge keeps hidden slots ' + merged.join());
+assert(View.moveCardKey(['A', 'B', 'C'], 'C', 'top').join() === 'C,A,B', 'move top');
+assert(View.moveCardKey(['A', 'B', 'C'], 'A', 'bottom').join() === 'B,C,A', 'move bottom');
+assert(View.moveCardKey(['A', 'B', 'C'], 'B', 'up').join() === 'B,A,C', 'move up');
+assert(View.moveCardKey(['A', 'B', 'C'], 'B', 'down').join() === 'A,C,B', 'move down');
+assert(View.moveCardKey(['A', 'B', 'C'], 'A', 'up').join() === 'A,B,C', 'move up at edge is a no-op');
+assert(View.ORDER_KEY === 'cm-card-order-v1', 'order storage key matches local report');
+
+const reordered = View.renderPage({
+  snapshot: sample,
+  dates: [{ date: '2026-09-23', seller: 'Pikapika007' }],
+}, {
+  q: '',
+  status: 'all',
+  selected: '',
+  order: ['Bulbasaur-V2-svG050', 'Arceus-Dialga-Palkia-GX-PKMTCHSV-P-158', 'Charizard-ex-PKMTCHSV-P-166'],
+});
+const pos = ['Bulbasaur-V2-svG050', 'Arceus-Dialga-Palkia-GX-PKMTCHSV-P-158', 'Charizard-ex-PKMTCHSV-P-166'].map(k => reordered.indexOf('data-card-key="' + k + '"'));
+assert(pos[0] !== -1 && pos[0] < pos[1] && pos[1] < pos[2], 'render applies custom order ' + pos.join(','));
+const searched = View.renderPage({
+  snapshot: sample,
+  dates: [{ date: '2026-09-23', seller: 'Pikapika007' }],
+}, { q: '妙蛙', status: 'all', selected: '', order: ['Charizard-ex-PKMTCHSV-P-166'] });
+const searchGrid = searched.split('id="cmGrid"')[1].split('推斷成交')[0];
+assert(searchGrid.includes('妙蛙種子') && !searchGrid.includes('噴火龍ex') && !searchGrid.includes('Charizard'), 'search still filters the grid');
+
+const objectFloors = {
+  date: '2026-09-24',
+  seller: 'Pikapika007',
+  scraped_at: '2026-09-24T08:00:00+00:00',
+  name_zh: { 'Ditto-SV-P173': '百變怪' },
+  floor_history: {
+    'Ditto-SV-P173': [
+      { date: '2026-09-21', sealed_floor: { price: 'nope', seller: 'Junk' }, raw_floor: { seller: 'NoPrice' }, floor: { price: { nested: 9 } }, status: 'ok' },
+      { date: '2026-09-22', sealed_floor: { price: 190, seller: 'A', rank: 1 }, raw_floor: { price: 150, seller: 'B', rank: 1 }, floor: { price: 150, seller: 'B', rank: 1 }, status: 'ok' },
+      { date: '2026-09-23', sealed_floor: { price: 175, seller: 'A', rank: 1 }, raw_floor: { price: 145, seller: 'B', rank: 1 }, floor: 145, status: 'ok' },
+      { date: '2026-09-24', sealed_floor: { price: ' 180 ', seller: 'SealShop', rank: 1 }, raw_floor: { price: 140, seller: 'RawShop', rank: 1 }, floor: { price: 140, seller: 'RawShop', rank: 1 }, status: 'ok' },
+    ],
+    'Junk-Card': [
+      { date: '2026-09-24', sealed_floor: { price: false }, raw_floor: [], floor: { priceEUR: 12 }, status: 'ok' },
+    ],
+  },
+  cards: {
+    'Ditto-SV-P173': {
+      card_key: 'Ditto-SV-P173',
+      title: 'Ditto',
+      status: 'ok',
+      sealed_only: false,
+      primary_market: 'raw',
+      url: 'javascript:alert(1)',
+      image_url: 'data:text/html;base64,PGh0bWw+',
+      floor: { price: 140, seller: 'RawShop', rank: 1 },
+      guide_from_price: { note: 'not a price' },
+      my_best_rank: 4,
+      my_listings: [{ seller: 'Pikapika007', price: 1, condition: 'NM', rank: 8 }],
+      markets: {
+        sealed: { count: 2, floor: { price: 180, seller: 'SealShop', rank: 1, isSealed: true }, my_best_rank: 3, top10: [] },
+        raw: { count: 6, floor: { price: 140, seller: 'RawShop', rank: 1 }, my_best_rank: 4, lowest5: [] },
+      },
+      offers_top10: [],
+    },
+    'Junk-Card': {
+      title: 'Junk floors',
+      status: 'ok',
+      floor: { seller: 'missing-price' },
+      my_best_rank: null,
+      markets: {
+        sealed: { count: 1, floor: ['180'], my_best_rank: null },
+        raw: { count: 1, floor: { price: false }, my_best_rank: null },
+      },
+      my_listings: [],
+      offers_top10: [],
+    },
+  },
+};
+
+const om = View.model(objectFloors);
+const ditto = om.cards.find(c => c.key === 'Ditto-SV-P173');
+const junk = om.cards.find(c => c.key === 'Junk-Card');
+assert(ditto.sealed.floor === 180, 'object sealed floor price');
+assert(ditto.raw.floor === 140, 'object raw floor price');
+assert(ditto.floor === 140, 'object card.floor price');
+assert(ditto.guide_from_price == null, 'junk guide price ignored');
+assert(ditto.sealed.rank === 3, 'sealed my_best_rank surfaces beside object floor');
+assert(ditto.raw.rank === 4, 'raw my_best_rank surfaces beside object floor');
+assert(ditto.my_best_rank === 4, 'card my_best_rank');
+assert(ditto.url === '' && ditto.image_url === '', 'object-floor card does not loosen url or thumb rules');
+assert(ditto.history.length === 4, 'object floor history kept');
+assert(ditto.history[0].sealed_floor == null && ditto.history[0].raw_floor == null && ditto.history[0].floor == null, 'junk history prices ignored');
+assert(ditto.history[1].sealed_floor === 190 && ditto.history[1].raw_floor === 150, 'history offer price');
+assert(ditto.history[3].sealed_floor === 180 && ditto.history[3].raw_floor === 140 && ditto.history[3].floor === 140, 'latest history offer price');
+assert(junk.sealed.floor == null && junk.raw.floor == null && junk.floor == null, 'array and non-numeric offers ignored');
+assert(junk.history[0].sealed_floor == null && junk.history[0].raw_floor == null && junk.history[0].floor == null, 'false, array, and priceEUR-only history ignored');
+assert(junk.sealed.rank == null && junk.raw.rank == null, 'missing my_best_rank stays empty');
+
+const zero = View.model({
+  date: '2026-09-24',
+  cards: { Z: { status: 'ok', markets: { sealed: { floor: { price: 0 }, my_best_rank: 1 }, raw: { floor: 0 } } } },
+});
+assert(zero.cards[0].sealed.floor === 0 && zero.cards[0].raw.floor === 0, 'zero floor is a price');
+assert(zero.cards[0].sealed.rank === 1, 'rank still read from my_best_rank');
+
+const objectHtml = View.renderPage({
+  snapshot: objectFloors,
+  date: objectFloors.date,
+  seller: objectFloors.seller,
+  scraped_at: objectFloors.scraped_at,
+  dates: [{ date: '2026-09-24', seller: 'Pikapika007' }],
+}, { q: '百變怪', status: 'all', selected: '' });
+assert(euroIn(objectHtml, 180) && euroIn(objectHtml, 140), 'object floors render as euros ' + (objectHtml.match(/€[^<]{0,12}/g) || []).slice(0, 8));
+assert(objectHtml.includes('排名 #3') && objectHtml.includes('排名 #4'), 'lane ranks from my_best_rank');
+assert(objectHtml.includes('cm-spark sealed') && objectHtml.includes('cm-spark raw'), 'object history draws sparklines');
+assert(objectHtml.includes('<path d="M'), 'sparkline has a price path');
+assert(!objectHtml.includes('地板走勢'), 'object history stays on the card');
+assert(!objectHtml.includes('javascript:'), 'links stay on safeUrl');
+assert(!objectHtml.includes('data:text/html'), 'non-image data urls stay blocked');
+assert(objectHtml.includes('cm-thumb-ph'), 'unsafe thumb stays a placeholder');
+assert(objectHtml.includes('這段沒有已確認成交') && !objectHtml.includes('cm-week-count'), 'no sales is a quiet week strip');
+const dittoArticle = objectHtml.split('百變怪')[1] || '';
+assert(!dittoArticle.includes('>排名 —<') && !dittoArticle.includes('排名 —'), 'ditto lanes are not blank ranks');
+
+const laneSample = {
+  date: '2026-09-24',
+  seller: 'Pikapika007',
+  name_zh: {
+    'Zoroark-GX-PKMTCHSV-P-154': '索羅亞克 GX',
+    'Both-Floors': '雙邊有價',
+    'Sealed-Floor': '只有密封',
+    'Neither': '都沒報價',
+    'Sealed-Listings': '密封有掛單',
+  },
+  floor_history: {
+    'Zoroark-GX-PKMTCHSV-P-154': [
+      { date: '2026-09-23', sealed_floor: 9, raw_floor: 4.2, floor: 4.2 },
+      { date: '2026-09-24', sealed_floor: 8, raw_floor: 3.99, floor: 3.99 },
+    ],
+  },
+  cards: {
+    'Zoroark-GX-PKMTCHSV-P-154': {
+      title: 'Zoroark GX',
+      status: 'ok',
+      sealed_only: true,
+      primary_market: 'sealed',
+      floor: 3.99,
+      my_best_rank: 7,
+      markets: {
+        sealed: { count: 0, floor: null, my_best_rank: null, top10: [] },
+        raw: { count: 14, floor: 3.99, my_best_rank: 7, lowest5: [{ seller: 'A', price: 3.99, rank: 1 }] },
+      },
+    },
+    'Both-Floors': {
+      status: 'ok',
+      sealed_only: true,
+      primary_market: 'raw',
+      markets: {
+        sealed: { count: 2, floor: 10, my_best_rank: 1 },
+        raw: { count: 3, floor: 4, my_best_rank: 2 },
+      },
+    },
+    'Sealed-Floor': {
+      status: 'ok',
+      sealed_only: false,
+      primary_market: 'raw',
+      markets: {
+        sealed: { count: 1, floor: 20, my_best_rank: 1 },
+        raw: { count: 0, floor: null, top10: [] },
+      },
+    },
+    Neither: {
+      status: 'no_offers',
+      sealed_only: true,
+      primary_market: 'sealed',
+      markets: { sealed: { floor: null }, raw: { floor: null } },
+    },
+    'Sealed-Listings': {
+      status: 'ok',
+      sealed_only: true,
+      primary_market: 'sealed',
+      markets: {
+        sealed: { count: 1, floor: null, top10: [{ seller: 'Seal', price: 12, isSealed: true, rank: 1 }] },
+        raw: { count: 4, floor: 6, my_best_rank: 3 },
+      },
+    },
+  },
+};
+const laneHtml = View.renderPage({
+  snapshot: laneSample,
+  dates: [{ date: '2026-09-24', seller: 'Pikapika007' }],
+}, { q: '', status: 'all', selected: '' });
+function cardChunk(src, key) {
+  const parts = src.split('<article class="cm-card');
+  return parts.find(part => part.includes('data-card-key="' + key + '"')) || '';
+}
+const zoro = cardChunk(laneHtml, 'Zoroark-GX-PKMTCHSV-P-154');
+assert(zoro.includes('裸卡地板') && !zoro.includes('密封地板'), 'raw-only card hides empty sealed lane');
+assert(zoro.includes('cm-lanes one') && zoro.includes('cm-lane emph'), 'raw-only lane is the focused block');
+assert(!zoro.includes('只看密封'), 'raw-only card does not claim 只看密封');
+assert(zoro.includes('>裸卡<') && !zoro.includes('>密封<'), 'raw-only market chip follows the raw lane');
+assert(!zoro.includes('sealed-only'), 'raw-only card does not take the sealed accent');
+assert(zoro.includes('cm-spark raw') && !zoro.includes('cm-spark sealed'), 'raw-only trend stays on the raw lane');
+assert(zoro.includes('#7'), 'headline rank follows the raw floor');
+const both = cardChunk(laneHtml, 'Both-Floors');
+assert(both.includes('密封地板') && both.includes('裸卡地板'), 'both floors keep both lanes');
+assert(both.includes('只看密封') && both.includes('sealed-only'), 'sealed_only still marks a card that has a sealed floor');
+function laneClass(chunk, label) {
+  const at = chunk.indexOf(`<div class="cm-lane-k">${label}</div>`);
+  const before = chunk.slice(Math.max(0, at - 60), at);
+  const m = before.match(/class="([^"]*)"\s*>\s*$/);
+  return m ? m[1] : '';
+}
+assert(laneClass(both, '密封地板').includes('emph') && !laneClass(both, '裸卡地板').includes('emph'), 'both floors keep sealed_only emphasis on the sealed lane ' + laneClass(both, '密封地板') + ' | ' + laneClass(both, '裸卡地板'));
+const sealedOnly = cardChunk(laneHtml, 'Sealed-Floor');
+assert(sealedOnly.includes('密封地板') && !sealedOnly.includes('裸卡地板'), 'missing raw lane is hidden');
+assert(sealedOnly.includes('cm-lane emph') && sealedOnly.includes('密封地板'), 'sealed floor is emphasized even if primary is raw');
+assert(!sealedOnly.includes('只看密封'), 'sealed emphasis without sealed_only flag has no badge');
+assert(sealedOnly.includes('>密封<') && !sealedOnly.includes('>裸卡<'), 'sealed-only floor chip says 密封');
+const neither = cardChunk(laneHtml, 'Neither');
+assert(neither.includes('密封地板') && neither.includes('裸卡地板') && !neither.includes('cm-lane emph'), 'no floors means no emphasis');
+assert(!neither.includes('只看密封'), 'empty sealed lane does not claim 只看密封');
+const listings = cardChunk(laneHtml, 'Sealed-Listings');
+assert(listings.includes('密封地板') && listings.includes('裸卡地板'), 'sealed listings keep the sealed lane');
+assert(listings.includes('cm-lane quiet') && listings.includes('cm-lane emph'), 'empty sealed floor is quiet beside a raw floor');
+assert(!listings.includes('只看密封'), 'listings without a sealed floor do not claim 只看密封');
 
 console.log('cardmarket snapshot repro ok');
