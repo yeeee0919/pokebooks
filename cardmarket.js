@@ -668,6 +668,10 @@ const CardmarketView = (() => {
         ${topName ? `<span class="cm-week-metric cm-week-top"><span class="cm-week-k">最多</span><b>${esc(topName)}</b></span>` : ''}
         <span class="cm-week-metric cm-week-spark"><span class="cm-week-k">逐日</span>${spark}</span>
       </div>
+      <details class="cm-week-fold">
+        <summary>成交明細 · ${week.count} 筆</summary>
+        <div class="cm-week-detail">${saleRows(week.rows, nameByKey)}</div>
+      </details>
     </div>`;
   }
 

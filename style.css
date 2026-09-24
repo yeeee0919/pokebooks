@@ -1702,6 +1702,29 @@ input, select { font-family: var(--font); }
 .cm-week-top b { font-family: var(--font); }
 .cm-week-spark { min-width: 108px; }
 .cm-week-spark .cm-spark { width: 96px; height: 22px; color: var(--blue); }
+.cm-week-fold { width: 100%; font-size: .75rem; }
+.cm-week-fold > summary {
+  display: inline-flex; align-items: center; gap: .3rem;
+  width: fit-content; cursor: pointer; list-style: none;
+  color: var(--t2); font-weight: 800; font-size: .72rem;
+  background: var(--s2); border-radius: 999px; padding: .2rem .6rem;
+}
+.cm-week-fold > summary::-webkit-details-marker { display: none; }
+.cm-week-fold > summary::marker { content: ''; }
+.cm-week-fold > summary::after { content: '▾'; font-size: .62rem; color: var(--t3); }
+.cm-week-fold[open] > summary { color: var(--orange); background: rgba(234,88,12,.1); }
+.cm-week-fold[open] > summary::after { content: '▴'; color: var(--orange); }
+.cm-week-fold > summary:hover { color: var(--t1); }
+.cm-week-fold > summary:focus { outline: none; }
+.cm-week-fold > summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.cm-week-detail { margin-top: .4rem; }
+.cm-week-detail .cm-table-wrap {
+  max-height: 280px;
+  border: 1px solid var(--b1);
+  border-radius: var(--r1);
+  background: var(--s2);
+}
+.cm-week-detail .cm-table th { background: var(--s2); }
 .cm-match { font-size: .75rem; color: var(--t3); white-space: nowrap; }
 .cm-grid {
   display: grid;
