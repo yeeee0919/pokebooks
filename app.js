@@ -3675,6 +3675,49 @@ let _cmDate = '';
 let _cmQuery = '';
 let _cmStatus = 'all';
 let _cmReq = 0;
+let _cmSortable = null;
+
+function readCmOrder() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CardmarketView.ORDER_KEY) || '[]');
+    return Array.isArray(raw) ? raw.map(k => String(k)) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function writeCmOrder(keys) {
+  try { localStorage.setItem(CardmarketView.ORDER_KEY, JSON.stringify(keys)); } catch (e) {}
+}
+
+function destroyCmSortable() {
+  if (!_cmSortable) return;
+  try { _cmSortable.destroy(); } catch (e) {}
+  _cmSortable = null;
+}
+
+function cmSnapshotKeys() {
+  if (!_cmCache || !window.CardmarketView) return [];
+  const m = CardmarketView.model(_cmCache.snapshot);
+  return m ? m.cards.map(c => c.key) : [];
+}
+
+function bindCmSortable() {
+  destroyCmSortable();
+  const grid = q('cmGrid');
+  if (!grid || typeof Sortable === 'undefined') return;
+  if (!grid.querySelector('.cm-card')) return;
+  _cmSortable = Sortable.create(grid, {
+    handle: '.drag-handle',
+    draggable: '.cm-card',
+    animation: 150,
+    ghostClass: 'cm-card-ghost',
+    onEnd() {
+      const visible = [...grid.querySelectorAll('.cm-card')].map(el => el.dataset.cardKey).filter(Boolean);
+      writeCmOrder(CardmarketView.mergeVisibleOrder(readCmOrder(), cmSnapshotKeys(), visible));
+    },
+  });
+}
 
 async function renderCardmarket(opts = {}) {
   const root = q('cardmarketRoot');
@@ -3682,6 +3725,7 @@ async function renderCardmarket(opts = {}) {
   const reload = !!(opts.reload || !_cmCache);
   if (reload) {
     const reqId = ++_cmReq;
+    destroyCmSortable();
     root.innerHTML = '<p class="cm-loading">載入市價快照…</p>';
     try {
       const data = await PokeApi.getCardmarket(_cmDate || '');
@@ -3691,6 +3735,7 @@ async function renderCardmarket(opts = {}) {
       if (reqId !== _cmReq) return;
       _cmCache = null;
       const msg = e.status === 401 ? '請先登入後才能看市價快照。' : (e.message || '無法載入');
+      destroyCmSortable();
       root.innerHTML = CardmarketView.renderError(msg);
       return;
     }
@@ -3698,11 +3743,14 @@ async function renderCardmarket(opts = {}) {
   const search = document.activeElement && document.activeElement.id === 'cmSearch'
     ? document.activeElement : null;
   const sel = search ? [search.selectionStart, search.selectionEnd] : null;
+  destroyCmSortable();
   root.innerHTML = CardmarketView.renderPage(_cmCache, {
     q: _cmQuery,
     status: _cmStatus,
     selected: _cmDate,
+    order: readCmOrder(),
   });
+  bindCmSortable();
   if (sel) {
     const inp = q('cmSearch');
     if (inp) {
@@ -3735,6 +3783,19 @@ function wireCardmarket() {
   const root = q('cardmarketRoot');
   if (!root) return;
   root.addEventListener('click', (e) => {
+    const move = e.target.closest('[data-cm-move]');
+    if (move && !move.disabled) {
+      const key = move.dataset.cmKey;
+      const dir = move.dataset.cmMove;
+      const grid = q('cmGrid');
+      if (!grid || !key) return;
+      const visible = [...grid.querySelectorAll('.cm-card')].map(el => el.dataset.cardKey).filter(Boolean);
+      const nextVisible = CardmarketView.moveCardKey(visible, key, dir);
+      if (nextVisible.join('\n') === visible.join('\n')) return;
+      writeCmOrder(CardmarketView.mergeVisibleOrder(readCmOrder(), cmSnapshotKeys(), nextVisible));
+      renderCardmarket();
+      return;
+    }
     const pill = e.target.closest('[data-cm-status]');
     if (pill) {
       _cmStatus = pill.dataset.cmStatus || 'all';
