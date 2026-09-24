@@ -1732,6 +1732,39 @@ input, select { font-family: var(--font); }
 .cm-lane-k { font-size: .62rem; font-weight: 700; color: var(--t3); letter-spacing: .03em; }
 .cm-lane-v { font-family: var(--mono); font-weight: 800; font-size: .95rem; }
 .cm-lane-s { font-size: .66rem; color: var(--t2); }
+.cm-trend { display: flex; flex-direction: column; gap: .12rem; margin-top: .28rem; min-width: 0; }
+.cm-trend-floor { margin-top: 0; }
+.cm-trend-k { font-size: .62rem; font-weight: 700; color: var(--t3); }
+.cm-spark { width: 100%; height: 28px; display: block; }
+.cm-spark.sealed { color: var(--gold); }
+.cm-spark.raw { color: var(--blue); }
+.cm-spark path { vector-effect: non-scaling-stroke; }
+.cm-delta { font-size: .66rem; font-weight: 700; font-family: var(--mono); line-height: 1.2; }
+.cm-delta-k { font-family: var(--font); font-weight: 700; color: var(--t3); margin-right: .2rem; }
+.cm-delta.up { color: var(--green); }
+.cm-delta.down { color: var(--red); }
+.cm-delta.flat, .cm-delta.na { color: var(--t3); }
+.cm-range { font-size: .62rem; color: var(--t3); margin: 0; }
+.cm-insights { margin-bottom: .85rem; }
+.cm-insight-list { display: flex; flex-direction: column; }
+.cm-insight {
+  display: grid;
+  grid-template-columns: auto minmax(88px, 168px) minmax(0, 1fr);
+  gap: .65rem;
+  align-items: center;
+  padding: .55rem 0;
+  border-top: 1px solid var(--b1);
+}
+.cm-insight .cm-thumb { width: 36px; height: 50px; }
+.cm-insight-id { min-width: 0; }
+.cm-insight .cm-name { font-size: .8rem; }
+.cm-insight-lanes { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem; min-width: 0; }
+.cm-insight-lane { min-width: 0; }
+.cm-trend-top {
+  display: flex; justify-content: space-between; gap: .35rem; align-items: baseline;
+  font-size: .66rem; color: var(--t3); font-weight: 700;
+}
+.cm-trend-top b { color: var(--t1); font-family: var(--mono); font-size: .78rem; }
 .cm-mine {
   display: flex; flex-wrap: wrap; gap: .35rem .75rem;
   font-size: .72rem; color: var(--t2);
@@ -1780,4 +1813,6 @@ input, select { font-family: var(--font); }
   .cm-lanes { grid-template-columns: 1fr; }
   .cm-actions { width: 100%; }
   .cm-date-field, .cm-date-field .sel { width: 100%; }
+  .cm-insight { grid-template-columns: auto minmax(0, 1fr); }
+  .cm-insight-lanes { grid-column: 1 / -1; grid-template-columns: 1fr; }
 }
