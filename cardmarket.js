@@ -8,6 +8,8 @@
 //   inferred_sales            confirmed rows, including older days; date and/or confirmed_at
 //   inferred_sales_pending    rows still inside the confirm window
 //   floor_history { [card_key]: [{ date, floor, sealed_floor, raw_floor, status }, ...] }
+//   floor, markets.*.floor, and each history floor are a number or an offer { price, ... }.
+//   Lane rank is markets.*.my_best_rank (not the floor offer's rank).
 
 const CardmarketView = (() => {
   const STATUS_LABEL = {
@@ -60,8 +62,21 @@ const CardmarketView = (() => {
     return safeImageUrl(card?.image_url) || mappedImage(snapshot, key);
   }
 
+  // Bare numbers (and numeric strings) stay as they are. Mac latest.json also
+  // stores floors as offer objects { price, seller, rank, ... }; Number(object) is
+  // NaN, which used to blank the lanes and sparklines. Junk offers are ignored.
   function numOrNull(n) {
     if (n == null || n === '') return null;
+    if (typeof n === 'object') {
+      if (Array.isArray(n) || !Object.prototype.hasOwnProperty.call(n, 'price')) return null;
+      const p = n.price;
+      if (typeof p === 'number') return Number.isFinite(p) ? p : null;
+      if (typeof p === 'string' && p.trim() !== '') {
+        const v = Number(p);
+        return Number.isFinite(v) ? v : null;
+      }
+      return null;
+    }
     const v = Number(n);
     return Number.isFinite(v) ? v : null;
   }

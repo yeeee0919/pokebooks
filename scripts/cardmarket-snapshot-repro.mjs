@@ -234,4 +234,102 @@ assert(bareHtml.includes('id="cmFile"') && bareHtml.includes('id="cmDate"'), 'up
 const filtered = View.visibleCards(m.cards, { status: 'no_offers', q: '' });
 assert(filtered.length === 1 && filtered[0].sealed_only, 'filter no_offers');
 
+const objectFloors = {
+  date: '2026-09-24',
+  seller: 'Pikapika007',
+  scraped_at: '2026-09-24T08:00:00+00:00',
+  name_zh: { 'Ditto-SV-P173': '百變怪' },
+  floor_history: {
+    'Ditto-SV-P173': [
+      { date: '2026-09-21', sealed_floor: { price: 'nope', seller: 'Junk' }, raw_floor: { seller: 'NoPrice' }, floor: { price: { nested: 9 } }, status: 'ok' },
+      { date: '2026-09-22', sealed_floor: { price: 190, seller: 'A', rank: 1 }, raw_floor: { price: 150, seller: 'B', rank: 1 }, floor: { price: 150, seller: 'B', rank: 1 }, status: 'ok' },
+      { date: '2026-09-23', sealed_floor: { price: 175, seller: 'A', rank: 1 }, raw_floor: { price: 145, seller: 'B', rank: 1 }, floor: 145, status: 'ok' },
+      { date: '2026-09-24', sealed_floor: { price: ' 180 ', seller: 'SealShop', rank: 1 }, raw_floor: { price: 140, seller: 'RawShop', rank: 1 }, floor: { price: 140, seller: 'RawShop', rank: 1 }, status: 'ok' },
+    ],
+    'Junk-Card': [
+      { date: '2026-09-24', sealed_floor: { price: false }, raw_floor: [], floor: { priceEUR: 12 }, status: 'ok' },
+    ],
+  },
+  cards: {
+    'Ditto-SV-P173': {
+      card_key: 'Ditto-SV-P173',
+      title: 'Ditto',
+      status: 'ok',
+      sealed_only: false,
+      primary_market: 'raw',
+      url: 'javascript:alert(1)',
+      image_url: 'data:text/html;base64,PGh0bWw+',
+      floor: { price: 140, seller: 'RawShop', rank: 1 },
+      guide_from_price: { note: 'not a price' },
+      my_best_rank: 4,
+      my_listings: [{ seller: 'Pikapika007', price: 1, condition: 'NM', rank: 8 }],
+      markets: {
+        sealed: { count: 2, floor: { price: 180, seller: 'SealShop', rank: 1, isSealed: true }, my_best_rank: 3, top10: [] },
+        raw: { count: 6, floor: { price: 140, seller: 'RawShop', rank: 1 }, my_best_rank: 4, lowest5: [] },
+      },
+      offers_top10: [],
+    },
+    'Junk-Card': {
+      title: 'Junk floors',
+      status: 'ok',
+      floor: { seller: 'missing-price' },
+      my_best_rank: null,
+      markets: {
+        sealed: { count: 1, floor: ['180'], my_best_rank: null },
+        raw: { count: 1, floor: { price: false }, my_best_rank: null },
+      },
+      my_listings: [],
+      offers_top10: [],
+    },
+  },
+};
+
+const om = View.model(objectFloors);
+const ditto = om.cards.find(c => c.key === 'Ditto-SV-P173');
+const junk = om.cards.find(c => c.key === 'Junk-Card');
+assert(ditto.sealed.floor === 180, 'object sealed floor price');
+assert(ditto.raw.floor === 140, 'object raw floor price');
+assert(ditto.floor === 140, 'object card.floor price');
+assert(ditto.guide_from_price == null, 'junk guide price ignored');
+assert(ditto.sealed.rank === 3, 'sealed my_best_rank surfaces beside object floor');
+assert(ditto.raw.rank === 4, 'raw my_best_rank surfaces beside object floor');
+assert(ditto.my_best_rank === 4, 'card my_best_rank');
+assert(ditto.url === '' && ditto.image_url === '', 'object-floor card does not loosen url or thumb rules');
+assert(ditto.history.length === 4, 'object floor history kept');
+assert(ditto.history[0].sealed_floor == null && ditto.history[0].raw_floor == null && ditto.history[0].floor == null, 'junk history prices ignored');
+assert(ditto.history[1].sealed_floor === 190 && ditto.history[1].raw_floor === 150, 'history offer price');
+assert(ditto.history[3].sealed_floor === 180 && ditto.history[3].raw_floor === 140 && ditto.history[3].floor === 140, 'latest history offer price');
+assert(junk.sealed.floor == null && junk.raw.floor == null && junk.floor == null, 'array and non-numeric offers ignored');
+assert(junk.history[0].sealed_floor == null && junk.history[0].raw_floor == null && junk.history[0].floor == null, 'false, array, and priceEUR-only history ignored');
+assert(junk.sealed.rank == null && junk.raw.rank == null, 'missing my_best_rank stays empty');
+
+const zero = View.model({
+  date: '2026-09-24',
+  cards: { Z: { status: 'ok', markets: { sealed: { floor: { price: 0 }, my_best_rank: 1 }, raw: { floor: 0 } } } },
+});
+assert(zero.cards[0].sealed.floor === 0 && zero.cards[0].raw.floor === 0, 'zero floor is a price');
+assert(zero.cards[0].sealed.rank === 1, 'rank still read from my_best_rank');
+
+const objectHtml = View.renderPage({
+  snapshot: objectFloors,
+  date: objectFloors.date,
+  seller: objectFloors.seller,
+  scraped_at: objectFloors.scraped_at,
+  dates: [{ date: '2026-09-24', seller: 'Pikapika007' }],
+}, { q: '百變怪', status: 'all', selected: '' });
+const euro = (n) => {
+  const text = '€' + n.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return objectHtml.includes(text) || objectHtml.includes(text.replace(',', '.'));
+};
+assert(euro(180) && euro(140), 'object floors render as euros ' + (objectHtml.match(/€[^<]{0,12}/g) || []).slice(0, 8));
+assert(objectHtml.includes('排名 #3') && objectHtml.includes('排名 #4'), 'lane ranks from my_best_rank');
+assert(objectHtml.includes('cm-spark sealed') && objectHtml.includes('cm-spark raw'), 'object history draws sparklines');
+assert(objectHtml.includes('<path d="M'), 'sparkline has a price path');
+assert(objectHtml.includes('地板走勢'), 'object history fills 地板走勢');
+assert(!objectHtml.includes('javascript:'), 'links stay on safeUrl');
+assert(!objectHtml.includes('data:text/html'), 'non-image data urls stay blocked');
+assert(objectHtml.includes('cm-thumb-ph'), 'unsafe thumb stays a placeholder');
+const dittoArticle = objectHtml.split('百變怪')[1] || '';
+assert(!dittoArticle.includes('>排名 —<') && !dittoArticle.includes('排名 —'), 'ditto lanes are not blank ranks');
+
 console.log('cardmarket snapshot repro ok');
