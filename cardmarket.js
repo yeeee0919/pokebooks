@@ -1,6 +1,13 @@
 'use strict';
 // Cardmarket daily snapshot view model + report HTML.
 // Field names follow Mac cardmarket-monitor latest.json.
+//
+// Mac push contract — every field below is optional; omit them and the tab stays empty there:
+//   image_url     https? URL, or data:image/(jpeg|jpg|png|webp|gif);base64,... (thumbs only)
+//   card_images   { [card_key]: same image shape } — used only when card.image_url is unusable
+//   inferred_sales            confirmed rows, including older days; date and/or confirmed_at
+//   inferred_sales_pending    rows still inside the confirm window
+//   floor_history { [card_key]: [{ date, floor, sealed_floor, raw_floor, status }, ...] }
 
 const CardmarketView = (() => {
   const STATUS_LABEL = {
@@ -21,9 +28,36 @@ const CardmarketView = (() => {
     return !t || /^www\.cardmarket\.com$/i.test(t);
   }
 
+  // Thumbs only. Links stay on safeUrl so javascript: and non-image data: URLs cannot become hrefs.
+  const DATA_IMAGE_RE = /^data:image\/(?:jpeg|jpg|png|webp|gif);base64,([A-Za-z0-9+/]+={0,2})$/i;
+
+  function isSafeDataImage(s) {
+    const m = DATA_IMAGE_RE.exec(s);
+    if (!m) return false;
+    const b64 = m[1];
+    return b64.length >= 4 && b64.length % 4 === 0;
+  }
+
   function safeUrl(u) {
     const s = String(u || '').trim();
     return /^https?:\/\//i.test(s) ? s : '';
+  }
+
+  function safeImageUrl(u) {
+    const s = String(u || '').trim();
+    if (safeUrl(s)) return s;
+    return isSafeDataImage(s) ? s : '';
+  }
+
+  function mappedImage(snapshot, key) {
+    const map = snapshot?.card_images;
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return '';
+    if (!Object.prototype.hasOwnProperty.call(map, key)) return '';
+    return safeImageUrl(map[key]);
+  }
+
+  function imageOf(card, snapshot, key) {
+    return safeImageUrl(card?.image_url) || mappedImage(snapshot, key);
   }
 
   function numOrNull(n) {
@@ -112,7 +146,8 @@ const CardmarketView = (() => {
       title: isJunkTitle(card.title) ? '' : String(card.title),
       note: isJunkTitle(card.note) ? '' : String(card.note),
       url: safeUrl(card.url),
-      image_url: safeUrl(card.image_url),
+      image_url: imageOf(card, snapshot, key),
+      history: historyOf(snapshot, key),
       status: String(card.status || ''),
       sealed_only: !!card.sealed_only,
       primary_market: card.primary_market || (card.sealed_only ? 'sealed' : 'all'),
@@ -127,6 +162,28 @@ const CardmarketView = (() => {
       raw: rawLane,
       all,
     };
+  }
+
+  function historyOf(snapshot, key) {
+    const map = snapshot?.floor_history;
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return [];
+    if (!Object.prototype.hasOwnProperty.call(map, key)) return [];
+    const rows = map[key];
+    if (!Array.isArray(rows)) return [];
+    const byDate = new Map();
+    for (const raw of rows) {
+      if (!raw || typeof raw !== 'object') continue;
+      const date = String(raw.date || '').trim().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      byDate.set(date, {
+        date,
+        floor: numOrNull(raw.floor),
+        sealed_floor: numOrNull(raw.sealed_floor),
+        raw_floor: numOrNull(raw.raw_floor),
+        status: raw.status == null ? '' : String(raw.status),
+      });
+    }
+    return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
   }
 
   function cardsOf(snapshot) {
@@ -242,22 +299,104 @@ const CardmarketView = (() => {
     return card.my_best_rank ?? card.all.rank;
   }
 
-  function laneHtml(label, lane, emph, quiet) {
+  function laneHtml(label, lane, emph, quiet, trend) {
     const cls = ['cm-lane', emph ? 'emph' : '', quiet ? 'quiet' : ''].filter(Boolean).join(' ');
     return `<div class="${cls}">
       <div class="cm-lane-k">${label}</div>
       <div class="cm-lane-v">${esc(eur(lane.floor))}</div>
       <div class="cm-lane-s">排名 ${esc(rankLabel(lane.rank))}${lane.count ? ' · ' + lane.count + ' 筆' : ''}</div>
+      ${trend || ''}
     </div>`;
+  }
+
+  function deltaInfo(rows, field) {
+    if (!rows || rows.length < 2) return { text: '—', cls: 'na' };
+    const last = rows[rows.length - 1][field];
+    const prev = rows[rows.length - 2][field];
+    if (last == null || prev == null) return { text: '—', cls: 'na' };
+    const cents = Math.round((last - prev) * 100);
+    if (cents === 0) return { text: '持平', cls: 'flat' };
+    return { text: (cents > 0 ? '+' : '−') + eur(Math.abs(cents) / 100), cls: cents > 0 ? 'up' : 'down' };
+  }
+
+  function sparkline(values, tone, title) {
+    const w = 120;
+    const h = 28;
+    const pad = 3;
+    const label = esc(title || '');
+    const nums = values.filter(v => v != null);
+    if (!nums.length) {
+      return `<svg class="cm-spark ${tone}" viewBox="0 0 ${w} ${h}" role="img"><title>${label}</title></svg>`;
+    }
+    const min = Math.min(...nums);
+    const max = Math.max(...nums);
+    const span = (max - min) || 1;
+    const n = Math.max(values.length - 1, 1);
+    const xy = values.map((v, i) => {
+      if (v == null) return null;
+      const x = pad + (i / n) * (w - pad * 2);
+      const y = pad + (1 - (v - min) / span) * (h - pad * 2);
+      return [x, y];
+    });
+    let d = '';
+    for (let i = 0; i < xy.length; i++) {
+      const p = xy[i];
+      if (!p) continue;
+      d += `${xy[i - 1] ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`;
+    }
+    const last = xy.reduce((acc, p) => p || acc, null);
+    const dot = last ? `<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="2.1" fill="currentColor"/>` : '';
+    return `<svg class="cm-spark ${tone}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${label}"><title>${label}</title><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>${dot}</svg>`;
+  }
+
+  function seriesTitle(history, field) {
+    return history.map(r => `${r.date} ${r[field] == null ? '—' : eur(r[field])}`).join(' · ');
+  }
+
+  function trendBits(history, field, tone) {
+    if (!history.some(r => r[field] != null)) return '';
+    const d = deltaInfo(history, field);
+    return `<div class="cm-trend">${sparkline(history.map(r => r[field]), tone, seriesTitle(history, field))}<div class="cm-delta ${d.cls}"><span class="cm-delta-k">較前一日</span>${esc(d.text)}</div></div>`;
+  }
+
+  function historyRange(history) {
+    if (!history.length) return '';
+    const a = history[0].date;
+    const b = history[history.length - 1].date;
+    return a === b ? a : `${a} – ${b}`;
+  }
+
+  function cardTrends(card) {
+    const history = card.history || [];
+    const sealed = trendBits(history, 'sealed_floor', 'sealed');
+    const raw = trendBits(history, 'raw_floor', 'raw');
+    if (!sealed && !raw) {
+      const floor = trendBits(history, 'floor', 'sealed');
+      if (!floor) return { sealed: '', raw: '', extra: '' };
+      return {
+        sealed: '',
+        raw: '',
+        extra: `<div class="cm-trend cm-trend-floor"><div class="cm-trend-k">地板</div>${floor}</div>`,
+      };
+    }
+    const range = historyRange(history);
+    return { sealed, raw, extra: range ? `<p class="cm-range">地板 ${esc(range)}</p>` : '' };
+  }
+
+  const THUMB_PH = '<div class="cm-thumb cm-thumb-ph" aria-hidden="true">🃏</div>';
+  const THUMB_ONERROR = "this.onerror=null;this.outerHTML='<div class=&quot;cm-thumb cm-thumb-ph&quot; aria-hidden=&quot;true&quot;>🃏</div>'";
+
+  function thumbHtml(url) {
+    if (!url) return THUMB_PH;
+    return `<img class="cm-thumb" alt="" src="${esc(url)}" loading="lazy" referrerpolicy="no-referrer" onerror="${THUMB_ONERROR}"/>`;
   }
 
   function cardHtml(card) {
     const primary = card.primary_market;
     const sealedEmph = card.sealed_only || primary === 'sealed';
     const rawEmph = !card.sealed_only && primary === 'raw';
-    const thumb = card.image_url
-      ? `<img class="cm-thumb" alt="" src="${esc(card.image_url)}" loading="lazy" referrerpolicy="no-referrer"/>`
-      : '<div class="cm-thumb cm-thumb-ph" aria-hidden="true">🃏</div>';
+    const trends = cardTrends(card);
+    const thumb = thumbHtml(card.image_url);
     const nameInner = card.url
       ? `<a href="${esc(card.url)}" target="_blank" rel="noopener noreferrer">${esc(card.name)}</a>`
       : esc(card.name);
@@ -283,9 +422,10 @@ const CardmarketView = (() => {
         </div>
       </div>
       <div class="cm-lanes">
-        ${laneHtml('密封地板', card.sealed, sealedEmph, false)}
-        ${laneHtml('裸卡地板', card.raw, rawEmph, card.sealed_only)}
+        ${laneHtml('密封地板', card.sealed, sealedEmph, false, trends.sealed)}
+        ${laneHtml('裸卡地板', card.raw, rawEmph, card.sealed_only, trends.raw)}
       </div>
+      ${trends.extra}
       <div class="cm-mine">
         <span>我的售價 <b>${esc(myPriceText(card.my_listings))}</b></span>
         <span>我的排名 <b>${esc(rankLabel(headlineRank(card)))}</b></span>
@@ -303,13 +443,42 @@ const CardmarketView = (() => {
     </article>`;
   }
 
+  function saleWhen(row) {
+    const d = String(row?.date || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(d)) {
+      const label = d.slice(0, 10);
+      return { label, key: Date.parse(label + 'T12:00:00Z') || 0 };
+    }
+    const c = row?.confirmed_at ?? row?.confirmedAt ?? '';
+    if (c == null || c === '') return { label: '—', key: 0 };
+    const dt = new Date(c);
+    if (Number.isNaN(dt.getTime())) {
+      const m = String(c).match(/\d{4}-\d{2}-\d{2}/);
+      return m ? { label: m[0], key: Date.parse(m[0] + 'T12:00:00Z') || 0 } : { label: '—', key: 0 };
+    }
+    const label = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Amsterdam',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(dt);
+    return { label, key: dt.getTime() };
+  }
+
+  function sortedSales(rows) {
+    return rows.map((row, i) => ({ row, i, when: saleWhen(row) })).sort((a, b) => {
+      return (b.when.key - a.when.key) || (a.i - b.i);
+    });
+  }
+
   function saleRows(rows, nameByKey) {
     if (!rows.length) return '<p class="cm-muted">沒有紀錄</p>';
-    const body = rows.map(row => {
+    const body = sortedSales(rows).map(({ row, when }) => {
       const b = offerBits(row);
       const name = nameByKey[row.card_key] || (!isJunkTitle(row.title) ? row.title : '') || row.card_key || '未命名';
       const hours = numOrNull(row.gone_hours);
       return `<tr>
+        <td class="num">${esc(when.label)}</td>
         <td>${esc(name)}</td>
         <td>${esc(b.seller || '—')}</td>
         <td class="num">${esc(eur(b.price))}</td>
@@ -321,9 +490,40 @@ const CardmarketView = (() => {
       </tr>`;
     }).join('');
     return `<div class="cm-table-wrap"><table class="cm-table">
-      <thead><tr><th>卡片</th><th>賣家</th><th>價格</th><th>品相</th><th>類型</th><th>前次排名</th><th>狀態</th><th>消失</th></tr></thead>
+      <thead><tr><th>日期</th><th>卡片</th><th>賣家</th><th>價格</th><th>品相</th><th>類型</th><th>前次排名</th><th>狀態</th><th>消失</th></tr></thead>
       <tbody>${body}</tbody>
     </table></div>`;
+  }
+
+  function insightLane(history, field, label, tone) {
+    const bits = trendBits(history, field, tone);
+    if (!bits) return '';
+    const last = [...history].reverse().find(r => r[field] != null);
+    return `<div class="cm-insight-lane">
+      <div class="cm-trend-top"><span class="cm-trend-k">${label}</span><b>${esc(last ? eur(last[field]) : '—')}</b></div>
+      ${bits}
+    </div>`;
+  }
+
+  function insightsHtml(cards) {
+    const rows = cards.filter(c => (c.history || []).some(r => r.sealed_floor != null || r.raw_floor != null || r.floor != null));
+    if (!rows.length) return '';
+    const dates = rows.flatMap(c => c.history.map(r => r.date)).sort();
+    const span = dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} – ${dates[dates.length - 1]}`;
+    const body = rows.map(card => {
+      let lanes = insightLane(card.history, 'sealed_floor', '密封地板', 'sealed')
+        + insightLane(card.history, 'raw_floor', '裸卡地板', 'raw');
+      if (!lanes) lanes = insightLane(card.history, 'floor', '地板', 'sealed');
+      return `<article class="cm-insight">
+        ${thumbHtml(card.image_url)}
+        <div class="cm-insight-id"><div class="cm-name">${esc(card.name)}</div><div class="cm-key">${esc(card.key)}</div></div>
+        <div class="cm-insight-lanes">${lanes}</div>
+      </article>`;
+    }).join('');
+    return `<section class="panel cm-insights">
+      <div class="panel-hd"><span class="panel-title">地板走勢</span><span class="cm-muted">${esc(span)} · 較前一日</span></div>
+      <div class="cm-insight-list">${body}</div>
+    </section>`;
   }
 
   function statBox(label, value, sub) {
@@ -464,6 +664,7 @@ const CardmarketView = (() => {
           <span class="cm-match">顯示 ${shown.length} / ${m.cards.length}</span>
         </div>
       </div>
+      ${insightsHtml(shown)}
       <div class="cm-grid" id="cmGrid">${grid}</div>
       <section class="panel cm-sales">
         <div class="panel-hd"><span class="panel-title">推斷成交 · 已確認</span><span class="cm-muted">${m.confirmed.length} 筆</span></div>
@@ -487,6 +688,8 @@ const CardmarketView = (() => {
     renderEmpty,
     renderError,
     esc,
+    safeUrl,
+    safeImageUrl,
   };
 })();
 

@@ -22,12 +22,27 @@ const sample = {
   config: { cards: { 'Bulbasaur-V2-svG050': { name_zh: '妙蛙種子' } } },
   inferred_sales: [{
     card_key: 'Charizard-ex-PKMTCHSV-P-166',
+    seller: 'OldShop',
+    price: 8,
+    date: '2026-09-20',
+    status: 'confirmed',
+    isSealed: true,
+  }, {
+    card_key: 'Charizard-ex-PKMTCHSV-P-166',
     seller: 'Deckpoint',
     price: 10,
+    date: '2026-09-23',
     condition: 'NM',
     isSealed: false,
     prev_rank: 3,
     status: 'confirmed',
+  }, {
+    card_key: 'Charizard-ex-PKMTCHSV-P-166',
+    seller: 'MidShop',
+    price: 9,
+    confirmed_at: '2026-09-22T10:00:00Z',
+    status: 'confirmed',
+    isSealed: false,
   }],
   inferred_sales_pending: [{
     card_key: 'Arceus-Dialga-Palkia-GX-PKMTCHSV-P-158',
@@ -41,7 +56,20 @@ const sample = {
     status: 'pending',
     gone_hours: 12.39,
   }],
-  inferred_sales_summary: { count: 1, pending_count: 1, min: 10, max: 10, avg: 10, sealed_count: 0, confirm_hours: 48 },
+  inferred_sales_summary: { count: 3, pending_count: 1, min: 8, max: 10, avg: 9, sealed_count: 1, confirm_hours: 48 },
+  card_images: {
+    'Bulbasaur-V2-svG050': 'data:image/png;base64,iVBORw0K',
+    'Charizard-ex-PKMTCHSV-P-166': 'data:image/gif;base64,R0lGODdh',
+    'Arceus-Dialga-Palkia-GX-PKMTCHSV-P-158': 'data:image/jpeg;base64,/9j/4AAQ',
+  },
+  floor_history: {
+    'Charizard-ex-PKMTCHSV-P-166': [
+      { date: '2026-09-23', sealed_floor: 42, raw_floor: 9.5, floor: 9.5, status: 'ok' },
+      { date: '2026-09-21', sealed_floor: 40, raw_floor: 10, floor: 10, status: 'ok' },
+      { date: '2026-09-22', sealed_floor: 38, raw_floor: 12, floor: 12, status: 'ok' },
+      { date: '2026-09-22', sealed_floor: 40, raw_floor: 11, floor: 11, status: 'ok' },
+    ],
+  },
   cancellations: [{ card_key: 'Ditto-SV-P173', seller: 'BKollector', price: 210, status: 'cancelled', isSealed: true }],
   cards: {
     'Arceus-Dialga-Palkia-GX-PKMTCHSV-P-158': {
@@ -50,7 +78,7 @@ const sample = {
       note: 'Arceus & Dialga & Palkia GX (PKMTCH SV-P 158)',
       sealed_only: true,
       url: 'https://www.cardmarket.com/en/Pokemon/Products/Singles/Traditional-Chinese-Products/Arceus-Dialga-Palkia-GX-PKMTCHSV-P-158',
-      image_url: '',
+      image_url: 'javascript:alert(1)',
       primary_market: 'all',
       guide_from_price: null,
       floor: null,
@@ -127,6 +155,31 @@ assert(byKey['Arceus-Dialga-Palkia-GX-PKMTCHSV-P-158'].name.includes('Arceus'), 
 assert(byKey['Charizard-ex-PKMTCHSV-P-166'].sealed.floor === 40, 'sealed floor');
 assert(byKey['Charizard-ex-PKMTCHSV-P-166'].raw.floor === 9.5, 'raw floor');
 assert(byKey['Charizard-ex-PKMTCHSV-P-166'].my_best_rank === 2, 'rank');
+assert(byKey['Charizard-ex-PKMTCHSV-P-166'].image_url === 'https://example.test/charizard.jpg', 'prefer card.image_url over card_images');
+assert(byKey['Bulbasaur-V2-svG050'].image_url === 'data:image/png;base64,iVBORw0K', 'card_images fallback');
+assert(byKey['Arceus-Dialga-Palkia-GX-PKMTCHSV-P-158'].image_url === 'data:image/jpeg;base64,/9j/4AAQ', 'unsafe image_url falls back to card_images');
+const history = byKey['Charizard-ex-PKMTCHSV-P-166'].history;
+assert(history.length === 3 && history.map(r => r.date).join() === '2026-09-21,2026-09-22,2026-09-23', 'floor_history sorted, last duplicate wins');
+assert(history[1].sealed_floor === 40 && history[1].raw_floor === 11, 'duplicate date keeps last row');
+
+const jpeg = 'data:image/jpeg;base64,/9j/4AAQ';
+assert(View.safeImageUrl(jpeg) === jpeg, 'jpeg data url');
+assert(View.safeImageUrl('data:image/jpg;base64,/9j/4AAQ') === 'data:image/jpg;base64,/9j/4AAQ', 'jpg data url');
+assert(View.safeImageUrl('data:image/png;base64,iVBORw0K') === 'data:image/png;base64,iVBORw0K', 'png data url');
+assert(View.safeImageUrl('data:image/webp;base64,UklGRgAA') === 'data:image/webp;base64,UklGRgAA', 'webp data url');
+assert(View.safeImageUrl('data:image/gif;base64,R0lGODdh') === 'data:image/gif;base64,R0lGODdh', 'gif data url');
+assert(View.safeImageUrl('  ' + jpeg + '  ') === jpeg, 'trim data url');
+assert(View.safeImageUrl('javascript:alert(1)') === '', 'reject javascript image');
+assert(View.safeImageUrl('data:text/html;base64,PGh0bWw+') === '', 'reject html data url');
+assert(View.safeImageUrl('data:image/svg+xml;base64,PHN2Zy8+') === '', 'reject svg data url');
+assert(View.safeImageUrl('data:image/jpeg;base64,abc') === '', 'reject short base64');
+assert(View.safeImageUrl('data:image/jpeg;base64,/9j/ 4AA') === '', 'reject whitespace in base64');
+assert(View.safeUrl(jpeg) === '', 'card links do not accept data urls');
+assert(View.safeUrl('https://example.test/a') === 'https://example.test/a', 'https link');
+assert(View.safeImageUrl('https://example.test/a.jpg') === 'https://example.test/a.jpg', 'https image');
+
+const bare = View.model({ date: '2026-09-23', cards: { A: { status: 'ok' } } });
+assert(bare.cards[0].image_url === '' && bare.cards[0].history.length === 0 && bare.confirmed.length === 0, 'missing optional fields stay empty');
 
 const html = View.renderPage({
   snapshot: sample,
@@ -144,9 +197,39 @@ assert(html.includes('Deckpoint'), 'renders confirmed sale');
 assert(html.includes('BKollector'), 'renders cancellation');
 assert(html.includes('&lt;script&gt;') === false, 'script title replaced by zh name');
 assert(!html.includes('<script>'), 'no raw script tag');
+assert(!html.includes('javascript:'), 'javascript urls stripped');
+assert(html.includes('data:image/png;base64,iVBORw0K'), 'renders png data thumb');
+assert(html.includes('data:image/jpeg;base64,/9j/4AAQ'), 'renders jpeg data thumb');
+assert(html.includes('src="https://example.test/charizard.jpg"'), 'keeps https thumb');
+assert(!html.includes('R0lGODdh'), 'card_images does not override card.image_url');
+assert(html.includes('referrerpolicy="no-referrer"'), 'thumb referrerpolicy');
+assert(html.includes('cm-thumb-ph'), 'broken thumb placeholder hook');
+assert(html.includes('onerror="this.onerror=null;'), 'thumb onerror');
+const confirmed = html.split('推斷成交 · 已確認')[1].split('待確認')[0];
+const i23 = confirmed.indexOf('2026-09-23');
+const i22 = confirmed.indexOf('2026-09-22');
+const i20 = confirmed.indexOf('2026-09-20');
+assert(confirmed.includes('>日期<') || confirmed.includes('日期'), 'confirmed sales have a date column');
+assert(i23 !== -1 && i22 !== -1 && i20 !== -1 && i23 < i22 && i22 < i20, 'confirmed sales newest first ' + [i23, i22, i20]);
+assert(html.includes('OldShop') && html.includes('MidShop'), 'past inferred_sales stay visible');
+assert(html.includes('地板走勢'), 'floor history section');
+assert(html.includes('密封地板') && html.includes('裸卡地板') && html.includes('較前一日'), 'floor trend labels');
+assert(html.includes('cm-spark sealed') && html.includes('cm-spark raw'), 'sealed and raw sparklines');
+const up = html.includes('+€2,00') || html.includes('+€2.00');
+const down = html.includes('−€1,50') || html.includes('−€1.50') || html.includes('-€1,50') || html.includes('-€1.50');
+assert(up && down, 'day-over-day deltas ' + (html.match(/較前一日<\/span>[^<]+/g) || []).join(' | '));
 const emptyHtml = View.renderEmpty();
 assert(emptyHtml.includes('CARDMARKET_INGEST_TOKEN'), 'empty state names ingest env');
 assert(emptyHtml.includes('id="cmReload"'), 'empty state can refresh after ingest');
+
+const bareHtml = View.renderPage({
+  snapshot: { date: '2026-09-23', seller: 'x', scraped_at: '2026-09-23T07:17:52Z', cards: { A: { status: 'ok', markets: { sealed: {}, raw: {} } } } },
+  dates: [{ date: '2026-09-23', seller: 'x' }],
+}, { q: '', status: 'all', selected: '' });
+assert(!bareHtml.includes('地板走勢'), 'no floor section without floor_history');
+assert(!bareHtml.includes('cm-spark'), 'no sparkline without history');
+assert(bareHtml.includes('cm-thumb-ph'), 'placeholder thumb when image missing');
+assert(bareHtml.includes('id="cmFile"') && bareHtml.includes('id="cmDate"'), 'upload and date picker stay');
 
 const filtered = View.visibleCards(m.cards, { status: 'no_offers', q: '' });
 assert(filtered.length === 1 && filtered[0].sealed_only, 'filter no_offers');
