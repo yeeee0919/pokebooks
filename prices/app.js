@@ -21,7 +21,7 @@ const RANGES = [
 ];
 
 const SOURCES = [
-  { id: "legacy", label: "舊家", color: "#d97706" },
+  { id: "legacy", label: "舊家", color: "#0052ff" },
   { id: "samurai_shrink", label: "有膜", color: "#05b169" },
   { id: "samurai_noshrink", label: "無膜", color: "#7a5af8" },
 ];
@@ -483,15 +483,24 @@ function chartSvg(lines, { height = 88, interactive = false, chartId = "c" } = {
       const last = pts[pts.length - 1];
       const d = splitRuns(pts).map(monotonePath).join(" ");
       const hoverDots = pts
-        .map(
-          (p) =>
-            `<circle class="dot" data-chart="${escapeHtml(chartId)}" data-source="${escapeHtml(line.id)}" data-date="${p.date}" cx="${p.x}" cy="${p.y}" r="3.25" fill="${line.color}" opacity="0" />`,
-        )
+        .map((p) => {
+          const left = ((p.x / plotW) * 100).toFixed(2);
+          const top = ((p.y / plotH) * 100).toFixed(2);
+          return `<span class="chart-hover-dot" data-chart="${escapeHtml(chartId)}" data-source="${escapeHtml(line.id)}" data-date="${p.date}" style="left:${left}%;top:${top}%;background:${line.color}"></span>`;
+        })
         .join("");
-      const endDot = `<circle class="end-dot" cx="${last.x}" cy="${last.y}" r="3.25" fill="${line.color}" stroke="#ffffff" stroke-width="1.5" />`;
-      return `<path class="chart-line" d="${d}" fill="none" stroke="${line.color}" stroke-width="${interactive ? 2 : 1.75}" stroke-linecap="round" stroke-linejoin="round"></path>${hoverDots}${endDot}`;
+      const left = ((last.x / plotW) * 100).toFixed(2);
+      const top = ((last.y / plotH) * 100).toFixed(2);
+      const endDot = `<span class="chart-end-dot" style="left:${left}%;top:${top}%;background:${line.color}"></span>`;
+      return {
+        path: `<path class="chart-line" d="${d}" fill="none" stroke="${line.color}" stroke-width="${interactive ? 2 : 1.75}" stroke-linecap="round" stroke-linejoin="round"></path>`,
+        marks: `${hoverDots}${endDot}`,
+      };
     })
-    .join("");
+    .filter(Boolean);
+
+  const pathMarkup = paths.map((p) => p.path).join("");
+  const marksMarkup = paths.map((p) => p.marks).join("");
 
   const payload = JSON.stringify(
     usable.map((line) => ({
@@ -504,17 +513,18 @@ function chartSvg(lines, { height = 88, interactive = false, chartId = "c" } = {
 
   const svg = `<svg viewBox="0 0 ${plotW} ${plotH}" preserveAspectRatio="none" data-t0="${t0}" data-t1="${t1}" data-pad-left="${pad.left}" data-pad-right="${pad.right}" data-chart-id="${escapeHtml(chartId)}">
     ${grid}
-    ${paths}
+    ${pathMarkup}
     ${
       interactive
         ? `<line class="scrubber" x1="${pad.left}" x2="${pad.left}" y1="${pad.top}" y2="${(pad.top + innerH).toFixed(2)}" visibility="hidden" />`
         : ""
     }
   </svg>`;
+  const plot = `<div class="chart-plot">${svg}<div class="chart-marks">${marksMarkup}</div></div>`;
 
   if (!interactive) {
     return `<div class="chart-frame chart-mini" data-lines='${payload}' data-chart-id="${escapeHtml(chartId)}">
-      <div class="chart-plot">${svg}</div>
+      ${plot}
     </div>`;
   }
 
@@ -537,7 +547,7 @@ function chartSvg(lines, { height = 88, interactive = false, chartId = "c" } = {
 
   return `<div class="chart-frame chart-interactive" data-lines='${payload}' data-chart-id="${escapeHtml(chartId)}">
     <div class="chart-y-labels">${yLabels}</div>
-    <div class="chart-plot">${svg}</div>
+    ${plot}
     <div class="chart-x-labels">${xLabels}</div>
   </div>`;
 }
@@ -554,7 +564,7 @@ function bindChartHovers(root) {
     }
     if (!lines.length) return;
     const dates = [...new Set(lines.flatMap((line) => line.series.map((p) => p.date)))].sort();
-    const dots = [...svg.querySelectorAll(".dot")];
+    const dots = [...frame.querySelectorAll(".chart-hover-dot")];
     const scrubber = svg.querySelector(".scrubber");
     const viewBox = (svg.getAttribute("viewBox") || "0 0 360 88").split(/\s+/).map(Number);
     const width = viewBox[2] || 360;
@@ -571,7 +581,9 @@ function bindChartHovers(root) {
     };
 
     const showAt = (date, clientX, clientY) => {
-      dots.forEach((d) => d.setAttribute("opacity", d.getAttribute("data-date") === date ? "1" : "0"));
+      dots.forEach((d) => {
+        d.classList.toggle("is-on", d.getAttribute("data-date") === date);
+      });
       if (scrubber) {
         const cx = xAtDate(date);
         scrubber.setAttribute("x1", String(cx));
@@ -583,7 +595,8 @@ function bindChartHovers(root) {
           const point = line.series.find((p) => p.date === date);
           if (!point) return "";
           const ntd = toTwd(point.jpy, point);
-          return `<div class="t-row"><span class="t-label"><span class="swatch" style="background:${line.color}"></span>${escapeHtml(line.label)}</span><span>${yen.format(point.jpy)}${ntd == null ? "" : ` · ${twd.format(ntd)}`}</span></div>`;
+          const tag = point.inferred ? `<span class="t-inferred">估</span>` : "";
+          return `<div class="t-row"><span class="t-label"><span class="swatch" style="background:${line.color}"></span>${escapeHtml(line.label)}${tag}</span><span>${yen.format(point.jpy)}${ntd == null ? "" : ` · ${twd.format(ntd)}`}</span></div>`;
         })
         .filter(Boolean);
       if (!rows.length) return;
@@ -606,7 +619,7 @@ function bindChartHovers(root) {
       showAt(best, e.clientX, e.clientY);
     });
     svg.addEventListener("mouseleave", () => {
-      dots.forEach((d) => d.setAttribute("opacity", "0"));
+      dots.forEach((d) => d.classList.remove("is-on"));
       if (scrubber) scrubber.setAttribute("visibility", "hidden");
       hideTooltip();
     });
@@ -711,19 +724,20 @@ function sourceControls() {
 function shell(content) {
   const route = state.route.name;
   return `<div class="shell">
-    <main class="page">
-      <div class="product-subbar">
+    <header class="topnav">
+      <a class="brand" href="#/">
+        <span class="brand-mark" aria-hidden="true"></span>
         <div>
-          <p class="product-kicker">進價</p>
           <h1>供應商進價</h1>
+          <p>Pokemon TCG · JPY / TWD</p>
         </div>
-        <nav class="nav-links" aria-label="進價">
-          <button class="nav-link ${route === "home" ? "active" : ""}" data-nav="home" type="button">首頁</button>
-          <button class="nav-link ${route === "catalog" ? "active" : ""}" data-nav="catalog" type="button">全部商品</button>
-        </nav>
-      </div>
-      ${content}
-    </main>
+      </a>
+      <nav class="nav-links">
+        <button class="nav-link ${route === "home" ? "active" : ""}" data-nav="home">首頁</button>
+        <button class="nav-link ${route === "catalog" ? "active" : ""}" data-nav="catalog">全部商品</button>
+      </nav>
+    </header>
+    <main class="page">${content}</main>
   </div>`;
 }
 
