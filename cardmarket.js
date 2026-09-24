@@ -307,7 +307,39 @@ const CardmarketView = (() => {
     return prices.map(eur).join(' · ');
   }
 
+  function laneHasFloor(lane) {
+    return !!(lane && lane.floor != null);
+  }
+
+  function laneHasListings(lane) {
+    return !!(lane && Array.isArray(lane.top) && lane.top.length);
+  }
+
+  // Emphasis follows a usable floor. sealed_only / primary_market only choose
+  // between two real floors; a raw-only card must not light up an empty sealed lane.
+  function laneFocus(card) {
+    const sealedFloor = laneHasFloor(card.sealed);
+    const rawFloor = laneHasFloor(card.raw);
+    const sealedData = sealedFloor || laneHasListings(card.sealed);
+    const rawData = rawFloor || laneHasListings(card.raw);
+    let emph = '';
+    if (sealedFloor && !rawFloor) emph = 'sealed';
+    else if (rawFloor && !sealedFloor) emph = 'raw';
+    else if (sealedFloor && rawFloor) {
+      if (!card.sealed_only && card.primary_market === 'raw') emph = 'raw';
+      else if (card.sealed_only || card.primary_market === 'sealed') emph = 'sealed';
+    }
+    return {
+      emph,
+      showSealed: sealedData || !rawData,
+      showRaw: rawData || !sealedData,
+    };
+  }
+
   function headlineRank(card) {
+    const focus = laneFocus(card);
+    if (focus.emph === 'sealed') return card.sealed.rank ?? card.my_best_rank;
+    if (focus.emph === 'raw') return card.raw.rank ?? card.my_best_rank;
     if (card.sealed_only) return card.sealed.rank ?? card.my_best_rank;
     if (card.primary_market === 'sealed') return card.sealed.rank ?? card.my_best_rank;
     if (card.primary_market === 'raw') return card.raw.rank ?? card.my_best_rank;
@@ -412,8 +444,7 @@ const CardmarketView = (() => {
 
   function cardHtml(card, index, total) {
     const primary = card.primary_market;
-    const sealedEmph = card.sealed_only || primary === 'sealed';
-    const rawEmph = !card.sealed_only && primary === 'raw';
+    const focus = laneFocus(card);
     const trends = cardTrends(card);
     const thumb = thumbHtml(card.image_url);
     const atTop = index <= 0;
@@ -428,8 +459,18 @@ const CardmarketView = (() => {
     const mineHtml = card.my_listings.length
       ? `<ul class="cm-offers">${card.my_listings.map(offerLi).join('')}</ul>`
       : '<p class="cm-muted">這張沒有我的掛單</p>';
-    const market = MARKET_LABEL[primary] || primary || '—';
-    return `<article class="cm-card${card.sealed_only ? ' sealed-only' : ''}" data-card-key="${esc(card.key)}">
+    let market = MARKET_LABEL[primary] || primary || '—';
+    if (focus.showRaw && !focus.showSealed) market = '裸卡';
+    else if (focus.showSealed && !focus.showRaw) market = '密封';
+    const showSealedBadge = !!(card.sealed_only && laneHasFloor(card.sealed));
+    const quietSealed = focus.showSealed && !laneHasFloor(card.sealed) && focus.emph === 'raw';
+    const quietRaw = focus.showRaw && !laneHasFloor(card.raw) && focus.emph === 'sealed';
+    const lanes = [
+      focus.showSealed ? laneHtml('密封地板', card.sealed, focus.emph === 'sealed', quietSealed, trends.sealed) : '',
+      focus.showRaw ? laneHtml('裸卡地板', card.raw, focus.emph === 'raw', quietRaw, trends.raw) : '',
+    ].filter(Boolean);
+    const laneClass = lanes.length === 1 ? 'cm-lanes one' : 'cm-lanes';
+    return `<article class="cm-card${focus.emph === 'sealed' ? ' sealed-only' : ''}" data-card-key="${esc(card.key)}">
       <div class="cm-card-tools">
         <button type="button" class="drag-handle" aria-label="拖曳調整順序" title="拖曳調整順序">⋮⋮</button>
         <div class="cm-order-btns">
@@ -446,14 +487,13 @@ const CardmarketView = (() => {
           <div class="cm-key">${esc(card.key)}</div>
           <div class="cm-chips">
             <span class="cm-badge st-${esc(card.status || 'other')}">${esc(statusText(card.status))}</span>
-            ${card.sealed_only ? '<span class="cm-badge seal">只看密封</span>' : ''}
+            ${showSealedBadge ? '<span class="cm-badge seal">只看密封</span>' : ''}
             <span class="cm-badge">${esc(market)}</span>
           </div>
         </div>
       </div>
-      <div class="cm-lanes">
-        ${laneHtml('密封地板', card.sealed, sealedEmph, false, trends.sealed)}
-        ${laneHtml('裸卡地板', card.raw, rawEmph, card.sealed_only, trends.raw)}
+      <div class="${laneClass}">
+        ${lanes.join('')}
       </div>
       ${trends.extra}
       <div class="cm-mine">

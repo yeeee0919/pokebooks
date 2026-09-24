@@ -422,4 +422,107 @@ assert(objectHtml.includes('這段沒有已確認成交') && !objectHtml.include
 const dittoArticle = objectHtml.split('百變怪')[1] || '';
 assert(!dittoArticle.includes('>排名 —<') && !dittoArticle.includes('排名 —'), 'ditto lanes are not blank ranks');
 
+const laneSample = {
+  date: '2026-09-24',
+  seller: 'Pikapika007',
+  name_zh: {
+    'Zoroark-GX-PKMTCHSV-P-154': '索羅亞克 GX',
+    'Both-Floors': '雙邊有價',
+    'Sealed-Floor': '只有密封',
+    'Neither': '都沒報價',
+    'Sealed-Listings': '密封有掛單',
+  },
+  floor_history: {
+    'Zoroark-GX-PKMTCHSV-P-154': [
+      { date: '2026-09-23', sealed_floor: 9, raw_floor: 4.2, floor: 4.2 },
+      { date: '2026-09-24', sealed_floor: 8, raw_floor: 3.99, floor: 3.99 },
+    ],
+  },
+  cards: {
+    'Zoroark-GX-PKMTCHSV-P-154': {
+      title: 'Zoroark GX',
+      status: 'ok',
+      sealed_only: true,
+      primary_market: 'sealed',
+      floor: 3.99,
+      my_best_rank: 7,
+      markets: {
+        sealed: { count: 0, floor: null, my_best_rank: null, top10: [] },
+        raw: { count: 14, floor: 3.99, my_best_rank: 7, lowest5: [{ seller: 'A', price: 3.99, rank: 1 }] },
+      },
+    },
+    'Both-Floors': {
+      status: 'ok',
+      sealed_only: true,
+      primary_market: 'raw',
+      markets: {
+        sealed: { count: 2, floor: 10, my_best_rank: 1 },
+        raw: { count: 3, floor: 4, my_best_rank: 2 },
+      },
+    },
+    'Sealed-Floor': {
+      status: 'ok',
+      sealed_only: false,
+      primary_market: 'raw',
+      markets: {
+        sealed: { count: 1, floor: 20, my_best_rank: 1 },
+        raw: { count: 0, floor: null, top10: [] },
+      },
+    },
+    Neither: {
+      status: 'no_offers',
+      sealed_only: true,
+      primary_market: 'sealed',
+      markets: { sealed: { floor: null }, raw: { floor: null } },
+    },
+    'Sealed-Listings': {
+      status: 'ok',
+      sealed_only: true,
+      primary_market: 'sealed',
+      markets: {
+        sealed: { count: 1, floor: null, top10: [{ seller: 'Seal', price: 12, isSealed: true, rank: 1 }] },
+        raw: { count: 4, floor: 6, my_best_rank: 3 },
+      },
+    },
+  },
+};
+const laneHtml = View.renderPage({
+  snapshot: laneSample,
+  dates: [{ date: '2026-09-24', seller: 'Pikapika007' }],
+}, { q: '', status: 'all', selected: '' });
+function cardChunk(src, key) {
+  const parts = src.split('<article class="cm-card');
+  return parts.find(part => part.includes('data-card-key="' + key + '"')) || '';
+}
+const zoro = cardChunk(laneHtml, 'Zoroark-GX-PKMTCHSV-P-154');
+assert(zoro.includes('裸卡地板') && !zoro.includes('密封地板'), 'raw-only card hides empty sealed lane');
+assert(zoro.includes('cm-lanes one') && zoro.includes('cm-lane emph'), 'raw-only lane is the focused block');
+assert(!zoro.includes('只看密封'), 'raw-only card does not claim 只看密封');
+assert(zoro.includes('>裸卡<') && !zoro.includes('>密封<'), 'raw-only market chip follows the raw lane');
+assert(!zoro.includes('sealed-only'), 'raw-only card does not take the sealed accent');
+assert(zoro.includes('cm-spark raw') && !zoro.includes('cm-spark sealed'), 'raw-only trend stays on the raw lane');
+assert(zoro.includes('#7'), 'headline rank follows the raw floor');
+const both = cardChunk(laneHtml, 'Both-Floors');
+assert(both.includes('密封地板') && both.includes('裸卡地板'), 'both floors keep both lanes');
+assert(both.includes('只看密封') && both.includes('sealed-only'), 'sealed_only still marks a card that has a sealed floor');
+function laneClass(chunk, label) {
+  const at = chunk.indexOf(`<div class="cm-lane-k">${label}</div>`);
+  const before = chunk.slice(Math.max(0, at - 60), at);
+  const m = before.match(/class="([^"]*)"\s*>\s*$/);
+  return m ? m[1] : '';
+}
+assert(laneClass(both, '密封地板').includes('emph') && !laneClass(both, '裸卡地板').includes('emph'), 'both floors keep sealed_only emphasis on the sealed lane ' + laneClass(both, '密封地板') + ' | ' + laneClass(both, '裸卡地板'));
+const sealedOnly = cardChunk(laneHtml, 'Sealed-Floor');
+assert(sealedOnly.includes('密封地板') && !sealedOnly.includes('裸卡地板'), 'missing raw lane is hidden');
+assert(sealedOnly.includes('cm-lane emph') && sealedOnly.includes('密封地板'), 'sealed floor is emphasized even if primary is raw');
+assert(!sealedOnly.includes('只看密封'), 'sealed emphasis without sealed_only flag has no badge');
+assert(sealedOnly.includes('>密封<') && !sealedOnly.includes('>裸卡<'), 'sealed-only floor chip says 密封');
+const neither = cardChunk(laneHtml, 'Neither');
+assert(neither.includes('密封地板') && neither.includes('裸卡地板') && !neither.includes('cm-lane emph'), 'no floors means no emphasis');
+assert(!neither.includes('只看密封'), 'empty sealed lane does not claim 只看密封');
+const listings = cardChunk(laneHtml, 'Sealed-Listings');
+assert(listings.includes('密封地板') && listings.includes('裸卡地板'), 'sealed listings keep the sealed lane');
+assert(listings.includes('cm-lane quiet') && listings.includes('cm-lane emph'), 'empty sealed floor is quiet beside a raw floor');
+assert(!listings.includes('只看密封'), 'listings without a sealed floor do not claim 只看密封');
+
 console.log('cardmarket snapshot repro ok');

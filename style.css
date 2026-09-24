@@ -1765,6 +1765,7 @@ input, select { font-family: var(--font); }
 .cm-badge.st-error, .cm-badge.st-other { background: rgba(220,38,38,.1); color: var(--red); }
 .cm-badge.seal { background: rgba(217,119,6,.14); color: var(--gold2); }
 .cm-lanes { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; }
+.cm-lanes.one { grid-template-columns: 1fr; }
 .cm-lane {
   background: var(--s2); border-radius: var(--r1); padding: .4rem .5rem; min-width: 0;
 }
