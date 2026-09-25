@@ -728,7 +728,7 @@ function shell(content) {
       <a class="brand" href="#/">
         <span class="brand-mark" aria-hidden="true"></span>
         <div>
-          <h1>供應商進價</h1>
+          <h1>日本供應商進價</h1>
           <p>Pokemon TCG · JPY / TWD</p>
         </div>
       </a>

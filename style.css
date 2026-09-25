@@ -96,7 +96,13 @@ input, select { font-family: var(--font); }
 .brand-sub  { font-size: .55rem; color: var(--t3); }
 
 /* KOR Pill (compact in topnav) */
-.topnav-right { margin-left: auto; flex-shrink: 0; }
+.topnav-right {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
 .kor-pill {
   margin: 0;
   background: var(--s2);
@@ -150,18 +156,31 @@ input, select { font-family: var(--font); }
 }
 .nav-link.active::before { display: none; }
 
-/* Price products stay on the right, in the same control language */
+/* Price products sit left of KOR, as outlined buttons rather than text tabs */
 .nav-portals {
   display: flex;
   align-items: center;
-  gap: .15rem;
-  margin-right: .7rem;
-  padding-left: .75rem;
-  border-left: 1px solid var(--b1);
+  gap: .4rem;
   flex-shrink: 0;
 }
 .nav-link.nav-portal {
   font-weight: 600;
+  color: var(--gold2);
+  background: #fff;
+  border: 1px solid rgba(217, 119, 6, .55);
+  border-radius: 999px;
+  padding: .38rem .8rem;
+}
+.nav-link.nav-portal:hover {
+  color: var(--gold2);
+  background: #fff7ed;
+  border-color: var(--gold);
+}
+.nav-link.nav-portal.active {
+  color: #1c1408;
+  background: var(--gold);
+  border-color: var(--gold);
+  font-weight: 700;
 }
 
 /* ─── MAIN ─── */
@@ -1614,8 +1633,8 @@ input, select { font-family: var(--font); }
 }
 @media (max-width: 860px) {
   .brand-sub { display: none; }
-  .nav .nav-link,
-  .nav-portals .nav-link { padding: .4rem .45rem; font-size: .68rem; }
+  .nav .nav-link { padding: .4rem .45rem; font-size: .68rem; }
+  .nav-portals .nav-link { padding: .32rem .65rem; font-size: .66rem; }
   .kor-pill-limit { display: none; }
   .kor-hero { flex-direction: column; gap: 1rem; }
   .kor-hero-r {
