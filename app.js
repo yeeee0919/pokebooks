@@ -3837,7 +3837,7 @@ const TAB_TITLES = {
   reports:          '損益報表',
   calendar:         '報稅行事曆',
   documents:        '相關文件',
-  cardmarket:       'Cardmarket 市價監控',
+  cardmarket:       '市價',
   settings:         '設定 & 備份',
 };
 

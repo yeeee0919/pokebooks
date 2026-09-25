@@ -775,24 +775,23 @@ const CardmarketView = (() => {
   }
 
   function renderEmpty() {
-    return `<div class="empty cm-empty">
-      <div class="empty-ico">📈</div>
-      <div class="empty-ttl">尚無 Cardmarket 每日快照</div>
-      <p class="empty-desc">Mac 上的 cardmarket-monitor 要把 <span class="mono">latest.json</span> 推上來。在 Vercel 設定環境變數 <b>CARDMARKET_INGEST_TOKEN</b>（長隨機字串，不是網頁密碼），再從 Mac 上傳。</p>
-      <pre class="cm-code">curl -X POST "$POKELEDGER_URL/api/cardmarket" \\
-  -H "Authorization: Bearer $CARDMARKET_INGEST_TOKEN" \\
-  -H "Content-Type: application/json" \\
-  --data-binary @latest.json</pre>
-      <p class="empty-desc">或執行 <span class="mono">node scripts/push-cardmarket-snapshot.mjs latest.json</span>。已登入時也可以直接選檔上傳。上傳後按重新整理。</p>
+    return `<div class="empty cm-empty cm-empty-gate">
+      <div class="empty-ttl">還沒有市價</div>
+      <p class="empty-desc">把今天的 Cardmarket 快照傳上來，這裡會顯示報價和成交。</p>
       <div class="cm-actions">
+        <label class="btn-primary cm-upload">上傳 latest.json<input id="cmFile" type="file" accept="application/json,.json" hidden/></label>
         <button type="button" class="btn-secondary" id="cmReload">重新整理</button>
-        <label class="btn-secondary cm-upload">上傳 latest.json<input id="cmFile" type="file" accept="application/json,.json" hidden/></label>
       </div>
+      <details class="cm-setup">
+        <summary>本機每天自動上傳</summary>
+        <p>在 Vercel 設定 <b>CARDMARKET_INGEST_TOKEN</b>，再從 Mac 執行：</p>
+        <pre class="cm-code">node scripts/push-cardmarket-snapshot.mjs latest.json</pre>
+      </details>
     </div>`;
   }
 
   function renderError(message) {
-    return `<div class="empty cm-empty"><div class="empty-ico">⚠️</div><div class="empty-ttl">無法載入市價</div><p class="empty-desc">${esc(message || '請稍後再試')}</p></div>`;
+    return `<div class="empty cm-empty cm-empty-gate"><div class="empty-ttl">無法載入市價</div><p class="empty-desc">${esc(message || '請稍後再試')}</p></div>`;
   }
 
   function dateSelect(dates, selected, extra) {
@@ -820,9 +819,8 @@ const CardmarketView = (() => {
           <label class="btn-secondary cm-upload">上傳 JSON<input id="cmFile" type="file" accept="application/json,.json" hidden/></label>
         </div></div>
         <div class="empty cm-empty">
-          <div class="empty-ico">📈</div>
           <div class="empty-ttl">這一天沒有快照</div>
-          <p class="empty-desc">改選其他日期，或用 <b>CARDMARKET_INGEST_TOKEN</b> 上傳 latest.json。</p>
+          <p class="empty-desc">改選其他日期，或上傳這一天的 latest.json。</p>
         </div>
       </div>`;
     }
