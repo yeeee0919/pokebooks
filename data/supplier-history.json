@@ -1,10 +1,10 @@
 {
-  "updatedAt": "2026-09-26T07:00:25.576Z",
+  "updatedAt": "2026-09-26T09:46:32.587Z",
   "date": "2026-09-26",
   "fx": {
     "jpytwd": 0.201784,
     "source": "https://open.er-api.com/v6/latest/JPY",
-    "fetchedAt": "2026-09-26T07:00:25.542Z"
+    "fetchedAt": "2026-09-26T09:46:32.558Z"
   },
   "items": [
     {
@@ -1964,8 +1964,8 @@
         },
         {
           "date": "2026-09-26",
-          "jpy": 9000,
-          "twd": 1816
+          "jpy": 8800,
+          "twd": 1776
         }
       ],
       "active": true,
@@ -2198,8 +2198,8 @@
             },
             {
               "date": "2026-09-26",
-              "jpy": 9000,
-              "twd": 1816
+              "jpy": 8800,
+              "twd": 1776
             }
           ],
           "nameEn": "Abyss Eye"
@@ -6177,8 +6177,8 @@
         },
         {
           "date": "2026-09-26",
-          "jpy": 21300,
-          "twd": 4298
+          "jpy": 21100,
+          "twd": 4258
         }
       ],
       "active": true,
@@ -6411,8 +6411,8 @@
             },
             {
               "date": "2026-09-26",
-              "jpy": 21300,
-              "twd": 4298
+              "jpy": 21100,
+              "twd": 4258
             }
           ],
           "nameEn": "Black Bolt box"
@@ -39095,8 +39095,8 @@
         },
         {
           "date": "2026-09-26",
-          "jpy": 8800,
-          "twd": 1776
+          "jpy": 8700,
+          "twd": 1756
         }
       ],
       "active": true,
@@ -39329,8 +39329,8 @@
             },
             {
               "date": "2026-09-26",
-              "jpy": 8800,
-              "twd": 1776
+              "jpy": 8700,
+              "twd": 1756
             }
           ],
           "nameEn": "Ninja Spinner"
@@ -51257,7 +51257,7 @@
       "id": "pokemon 151",
       "nameJa": "ポケモン151(SV2a)",
       "nameEn": "pokemon 151",
-      "note": "",
+      "note": "Pokémon",
       "series": [
         {
           "date": "2026-08-14",
@@ -51399,10 +51399,25 @@
           "date": "2026-09-11",
           "jpy": 54000,
           "twd": 11074
+        },
+        {
+          "date": "2026-09-24",
+          "jpy": 45300,
+          "twd": 9095
+        },
+        {
+          "date": "2026-09-25",
+          "jpy": 45300,
+          "twd": 9076
+        },
+        {
+          "date": "2026-09-26",
+          "jpy": 45300,
+          "twd": 9141
         }
       ],
       "active": true,
-      "image": "/images/093f403756dc4420.png",
+      "image": "/images/d82e115c3960e065.png",
       "sources": {
         "legacy": {
           "series": [
@@ -51546,6 +51561,21 @@
               "date": "2026-09-11",
               "jpy": 54000,
               "twd": 11074
+            },
+            {
+              "date": "2026-09-24",
+              "jpy": 45300,
+              "twd": 9095
+            },
+            {
+              "date": "2026-09-25",
+              "jpy": 45300,
+              "twd": 9076
+            },
+            {
+              "date": "2026-09-26",
+              "jpy": 45300,
+              "twd": 9141
             }
           ],
           "nameEn": "pokemon 151"
@@ -51915,53 +51945,6 @@
           "nameEn": "pokemon 151"
         }
       }
-    },
-    {
-      "id": "Pokémon Card 151",
-      "nameJa": "",
-      "nameEn": "Pokémon Card 151",
-      "note": "Pokémon",
-      "image": "/images/d82e115c3960e065.png",
-      "sources": {
-        "legacy": {
-          "series": [
-            {
-              "date": "2026-09-24",
-              "jpy": 45300,
-              "twd": 9095
-            },
-            {
-              "date": "2026-09-25",
-              "jpy": 45300,
-              "twd": 9076
-            },
-            {
-              "date": "2026-09-26",
-              "jpy": 45300,
-              "twd": 9141
-            }
-          ],
-          "nameEn": "Pokémon Card 151"
-        }
-      },
-      "series": [
-        {
-          "date": "2026-09-24",
-          "jpy": 45300,
-          "twd": 9095
-        },
-        {
-          "date": "2026-09-25",
-          "jpy": 45300,
-          "twd": 9076
-        },
-        {
-          "date": "2026-09-26",
-          "jpy": 45300,
-          "twd": 9141
-        }
-      ],
-      "active": true
     },
     {
       "id": "Pokémon Card 151 Card File Set Monsutaabooru",
@@ -61632,8 +61615,8 @@
         },
         {
           "date": "2026-09-26",
-          "jpy": 13600,
-          "twd": 2744
+          "jpy": 13300,
+          "twd": 2684
         }
       ],
       "active": true,
@@ -61866,8 +61849,8 @@
             },
             {
               "date": "2026-09-26",
-              "jpy": 13600,
-              "twd": 2744
+              "jpy": 13300,
+              "twd": 2684
             }
           ],
           "nameEn": "snow hazard"
@@ -65102,8 +65085,8 @@
             },
             {
               "date": "2026-09-26",
-              "jpy": 2750,
-              "twd": 555
+              "jpy": 2600,
+              "twd": 525
             }
           ],
           "nameEn": "Starter Set ex Eevee ex"
@@ -65122,8 +65105,8 @@
         },
         {
           "date": "2026-09-26",
-          "jpy": 2750,
-          "twd": 555
+          "jpy": 2600,
+          "twd": 525
         }
       ],
       "active": true
