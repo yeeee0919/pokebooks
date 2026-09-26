@@ -1,10 +1,10 @@
 {
-  "updatedAt": "2026-09-26T09:46:32.587Z",
+  "updatedAt": "2026-09-26T09:47:19.946Z",
   "date": "2026-09-26",
   "fx": {
     "jpytwd": 0.201784,
     "source": "https://open.er-api.com/v6/latest/JPY",
-    "fetchedAt": "2026-09-26T09:46:32.558Z"
+    "fetchedAt": "2026-09-26T09:47:19.919Z"
   },
   "items": [
     {
@@ -3055,7 +3055,7 @@
       "nameJa": "",
       "nameEn": "Amazing Volt Tackle",
       "note": "Pokémon",
-      "image": "/images/d37530b9e9aee0e8.png",
+      "image": "/images/182c9c6683b1c8a6.png",
       "sources": {
         "legacy": {
           "series": [
@@ -3071,8 +3071,8 @@
             },
             {
               "date": "2026-09-26",
-              "jpy": 118300,
-              "twd": 23871
+              "jpy": 48300,
+              "twd": 9746
             }
           ],
           "nameEn": "Amazing Volt Tackle"
@@ -3089,6 +3089,33 @@
           "jpy": 118300,
           "twd": 23703
         },
+        {
+          "date": "2026-09-26",
+          "jpy": 48300,
+          "twd": 9746
+        }
+      ],
+      "active": true
+    },
+    {
+      "id": "Amazing Volt Tackle (Pokémon Center & Pokémon Store Set)",
+      "nameJa": "",
+      "nameEn": "Amazing Volt Tackle (Pokémon Center & Pokémon Store Set)",
+      "note": "Pokémon",
+      "image": "/images/d37530b9e9aee0e8.png",
+      "sources": {
+        "legacy": {
+          "series": [
+            {
+              "date": "2026-09-26",
+              "jpy": 118300,
+              "twd": 23871
+            }
+          ],
+          "nameEn": "Amazing Volt Tackle (Pokémon Center & Pokémon Store Set)"
+        }
+      },
+      "series": [
         {
           "date": "2026-09-26",
           "jpy": 118300,
@@ -36526,7 +36553,7 @@
       "nameJa": "",
       "nameEn": "Mugenzoon",
       "note": "Pokémon",
-      "image": "/images/8737b76b4db4fd41.png",
+      "image": "/images/3a920efdc6dc65f3.png",
       "sources": {
         "legacy": {
           "series": [
@@ -36542,8 +36569,8 @@
             },
             {
               "date": "2026-09-26",
-              "jpy": 105300,
-              "twd": 21248
+              "jpy": 48300,
+              "twd": 9746
             }
           ],
           "nameEn": "Mugenzoon"
@@ -36560,6 +36587,33 @@
           "jpy": 105300,
           "twd": 21098
         },
+        {
+          "date": "2026-09-26",
+          "jpy": 48300,
+          "twd": 9746
+        }
+      ],
+      "active": true
+    },
+    {
+      "id": "Mugenzoon (Pokémon Center Limited Set)",
+      "nameJa": "",
+      "nameEn": "Mugenzoon (Pokémon Center Limited Set)",
+      "note": "Pokémon",
+      "image": "/images/8737b76b4db4fd41.png",
+      "sources": {
+        "legacy": {
+          "series": [
+            {
+              "date": "2026-09-26",
+              "jpy": 105300,
+              "twd": 21248
+            }
+          ],
+          "nameEn": "Mugenzoon (Pokémon Center Limited Set)"
+        }
+      },
+      "series": [
         {
           "date": "2026-09-26",
           "jpy": 105300,
