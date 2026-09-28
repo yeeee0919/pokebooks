@@ -306,10 +306,13 @@ function catalogPriceCell(item, source, best) {
   const klass = changeClass(prev?.jpy, current.jpy);
   const ntd = toTwd(current.jpy, current);
   const isBest = best != null && current.jpy === best;
+  const pct = prev ? compactPct(prev.jpy, current.jpy) : "";
   return `<div class="catalog-quote ${isBest ? "is-best" : ""}">
     <span class="price">${yen.format(current.jpy)}</span>
-    ${ntd == null ? "" : `<span class="price-twd">${twd.format(ntd)}</span>`}
-    <span class="delta ${klass}">${prev ? compactPct(prev.jpy, current.jpy) : ""}</span>
+    <span class="quote-meta">
+      ${ntd == null ? "" : `<span class="price-twd">${twd.format(ntd)}</span>`}
+      ${pct ? `<span class="delta ${klass}">${pct}</span>` : ""}
+    </span>
   </div>`;
 }
 
@@ -807,18 +810,35 @@ function renderChangesBlock() {
   if (!rows.length) return "";
   const labels = { up: "上漲", down: "下跌", new: "新品", removed: "下架" };
   return `<section class="changes">
-    <h3>今日異動</h3>
-    <p class="muted">與昨日 JPY 進價比較，台幣依當日匯率換算</p>
+    <div class="changes-hd">
+      <h3>今日異動</h3>
+      <p class="muted">${rows.length} 項 · 與昨日日圓進價比較</p>
+    </div>
     ${rows
       .map((row) => {
-        const delta =
-          row.from != null && row.to != null ? changeText(row.from, row.to) : "";
+        const delta = row.from != null && row.to != null ? changeText(row.from, row.to) : "";
+        const klass = row.type === "up" ? "price-up" : row.type === "down" ? "price-down" : "";
+        const fromTwd = row.from == null ? null : toTwd(row.from);
+        const toTwdAmt = row.to == null ? null : toTwd(row.to);
+        const px = (jpy, ntd) =>
+          jpy == null
+            ? "—"
+            : `${yen.format(jpy)}${ntd == null ? "" : `<span class="price-twd">${twd.format(ntd)}</span>`}`;
         return `<div class="change-row">
-          ${imageHtml(row.item, "thumb")}
-          <span class="tag ${row.type}">${labels[row.type]}</span>
-          <button class="btn btn-ghost btn-sm" data-open="${encodeURIComponent(row.item.id)}" style="justify-self:start;padding:0;height:auto">${escapeHtml(row.item.nameEn)}<div class="muted">${escapeHtml(SOURCE_LABEL[row.source] || row.source)}</div></button>
-          <span>${row.from == null ? "—" : money(row.from)}</span>
-          <span class="${row.type === "up" ? "price-up" : row.type === "down" ? "price-down" : ""}">${row.to == null ? "—" : money(row.to)}${delta ? `<div class="muted">${escapeHtml(delta)}</div>` : ""}</span>
+          ${imageHtml(row.item, "thumb change-thumb")}
+          <div class="change-main">
+            <span class="tag ${row.type}">${labels[row.type]}</span>
+            <button type="button" class="change-name" data-open="${encodeURIComponent(row.item.id)}">
+              <span>${escapeHtml(row.item.nameEn)}</span>
+              <span class="muted">${escapeHtml(SOURCE_LABEL[row.source] || row.source)}</span>
+            </button>
+          </div>
+          <div class="change-move ${klass}">
+            <span class="change-px">${px(row.from, fromTwd)}</span>
+            <span class="change-arrow" aria-hidden="true">→</span>
+            <span class="change-px">${px(row.to, toTwdAmt)}</span>
+            ${delta ? `<span class="change-delta">${escapeHtml(delta)}</span>` : ""}
+          </div>
         </div>`;
       })
       .join("")}
@@ -836,13 +856,13 @@ function renderCatalog() {
     );
   });
   const cols = activeSources();
-  const colTemplate = `40px minmax(240px, 1.8fr) ${cols.map(() => "minmax(132px, 1fr)").join(" ")} 108px`;
+  const colTemplate = `36px minmax(160px, 1fr) ${cols.map(() => "124px").join(" ")} 76px`;
 
   return shell(`
-    <div class="page-head">
+    <div class="catalog-bar">
       <div>
         <h2>全部商品</h2>
-        <p class="lede">點列開啟走勢 · 已追蹤 ${state.watchlist.length} 項</p>
+        <p class="lede">${items.length} 項 · 已追蹤 ${state.watchlist.length} · 點一列看走勢</p>
       </div>
       <div class="toolbar">
         ${sourceControls()}
@@ -872,7 +892,7 @@ function renderCatalog() {
               <span class="muted">${escapeHtml(item.nameJa || "")}</span>
             </div>
             ${cols.map((source) => catalogPriceCell(item, source, best)).join("")}
-            <button class="badge ${watched ? "on" : ""}" data-toggle="${encodeURIComponent(item.id)}">${watched ? "追蹤中" : "追蹤"}</button>
+            <button type="button" class="badge ${watched ? "on" : ""}" data-toggle="${encodeURIComponent(item.id)}">${watched ? "追蹤中" : "追蹤"}</button>
           </div>`;
         })
         .join("")}
@@ -913,6 +933,7 @@ function renderItem() {
 function bindCatalogKeys(root) {
   root.querySelectorAll(".catalog-row[data-open]").forEach((row) => {
     row.addEventListener("keydown", (e) => {
+      if (e.target.closest("[data-toggle]")) return;
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         navigate(`item/${row.dataset.open}`);
@@ -941,18 +962,18 @@ function onClick(e) {
     navigate(name === "home" ? "" : name);
     return;
   }
-  const open = e.target.closest("[data-open]");
-  if (open) {
-    e.preventDefault();
-    navigate(`item/${open.dataset.open}`);
-    return;
-  }
   const toggle = e.target.closest("[data-toggle]");
   if (toggle) {
     e.preventDefault();
     e.stopPropagation();
     toggleWatch(decodeURIComponent(toggle.dataset.toggle));
     render();
+    return;
+  }
+  const open = e.target.closest("[data-open]");
+  if (open) {
+    e.preventDefault();
+    navigate(`item/${open.dataset.open}`);
     return;
   }
   const source = e.target.closest("[data-source]");
