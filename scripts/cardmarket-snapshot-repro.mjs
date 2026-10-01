@@ -256,6 +256,18 @@ const euroIn = (chunk, n) => {
   return chunk.includes(text) || chunk.includes(text.replace(',', '.'));
 };
 assert(euroIn(beforeGrid, 8) && euroIn(beforeGrid, 10) && euroIn(beforeGrid, 9), 'week min max avg');
+assert(/<details class="cm-week-fold">/.test(beforeGrid) && !/<details class="cm-week-fold"[^>]*\sopen/.test(beforeGrid), 'week detail starts collapsed');
+assert(beforeGrid.includes('成交明細 · 3 筆'), 'week detail summary names the in-window count');
+const weekDetail = (beforeGrid.split('class="cm-week-detail"')[1] || '').split('</details>')[0];
+assert(weekDetail.includes('OldShop') && weekDetail.includes('MidShop') && weekDetail.includes('Deckpoint'), 'week detail lists in-window sellers');
+assert(weekDetail.includes('噴火龍ex'), 'week detail prefers zh card name');
+assert(weekDetail.includes('>密封<') && weekDetail.includes('>裸卡<'), 'week detail marks sealed and raw');
+assert(euroIn(weekDetail, 8) && euroIn(weekDetail, 9) && euroIn(weekDetail, 10), 'week detail prices');
+const wd23 = weekDetail.indexOf('2026-09-23');
+const wd22 = weekDetail.indexOf('2026-09-22');
+const wd20 = weekDetail.indexOf('2026-09-20');
+assert(wd23 !== -1 && wd22 !== -1 && wd20 !== -1 && wd23 < wd22 && wd22 < wd20, 'week detail newest first ' + [wd23, wd22, wd20]);
+assert(!weekDetail.includes('ArchiveShop') && !weekDetail.includes('2026-08-01') && !weekDetail.includes('SvenVM'), 'week detail stays inside the confirmed window');
 assert(html.includes('class="drag-handle"'), 'drag handle');
 assert(html.includes('>⬆ 置頂<') && html.includes('>↑ 上移<') && html.includes('>↓ 下移<') && html.includes('>⬇ 置底<'), 'order buttons');
 assert(html.includes('data-move="top"') && html.includes('data-move="up"') && html.includes('data-move="down"') && html.includes('data-move="bottom"'), 'data-move values');
@@ -277,6 +289,7 @@ const quiet = View.renderPage({
   dates: [{ date: '2026-03-01', seller: 'x' }],
 }, { q: '', status: 'all', selected: '' });
 assert(quiet.includes('這段沒有已確認成交') && !quiet.includes('cm-week-count'), 'quiet empty week, no fake zero metric');
+assert(!quiet.includes('成交明細') && !quiet.includes('cm-week-detail'), 'quiet week has no sale detail');
 
 const fromScrapeWeek = View.recentConfirmed({
   scraped_at: '2026-09-23T22:30:00Z',

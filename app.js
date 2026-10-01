@@ -3676,6 +3676,7 @@ let _cmQuery = '';
 let _cmStatus = 'all';
 let _cmReq = 0;
 let _cmSortable = null;
+let _cmWeekOpen = false;
 
 function readCmOrder() {
   try {
@@ -3751,6 +3752,7 @@ async function renderCardmarket(opts = {}) {
     order: readCmOrder(),
   });
   bindCmSortable();
+  bindCmWeekDetail();
   if (sel) {
     const inp = q('cmSearch');
     if (inp) {
@@ -3777,6 +3779,13 @@ async function uploadCardmarketFile(file) {
   } catch (e) {
     toast(e.message || '上傳失敗', 'e');
   }
+}
+
+function bindCmWeekDetail() {
+  const fold = q('cardmarketRoot')?.querySelector('details.cm-week-fold');
+  if (!fold) return;
+  if (_cmWeekOpen) fold.open = true;
+  fold.addEventListener('toggle', () => { _cmWeekOpen = fold.open; });
 }
 
 function wireCardmarket() {
