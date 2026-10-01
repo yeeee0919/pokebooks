@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="favicon.svg"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,620;9..144,700&family=Outfit:wght@360;440;520;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
@@ -17,7 +17,7 @@
 <div id="loginGate">
   <div class="login-card">
     <div class="brand" style="justify-content:center;margin-bottom:1.25rem">
-      <span class="brand-icon">🃏</span>
+      <span class="brand-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.2 2.2h7.2L13.8 6.6V13.8H2.2V2.2Z" stroke="currentColor" stroke-width="1.3"/><path d="M9.2 2.5V6.8h4.3" stroke="currentColor" stroke-width="1.3"/></svg></span>
       <div class="brand-text">
         <span class="brand-name">PokeLedger</span>
         <span class="brand-sub">擁有者登入</span>
@@ -36,7 +36,7 @@
   <aside class="sidebar topnav">
     <div class="topnav-bar">
       <div class="brand">
-        <span class="brand-icon">🃏</span>
+        <span class="brand-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.2 2.2h7.2L13.8 6.6V13.8H2.2V2.2Z" stroke="currentColor" stroke-width="1.3"/><path d="M9.2 2.5V6.8h4.3" stroke="currentColor" stroke-width="1.3"/></svg></span>
         <div class="brand-text">
           <span class="brand-name">PokeLedger</span>
           <span class="brand-sub">卡牌記帳系統</span>
@@ -125,7 +125,7 @@
             </div>
             <div>
               <div class="cf-title">財務現金流對比</div>
-              <div class="cf-sub">Cash Flow Dynamics</div>
+              <div class="cf-sub">這一期的進出對照</div>
             </div>
           </div>
           <div class="cf-filters">
@@ -197,11 +197,11 @@
 
         <div class="two-col">
           <div class="panel">
-            <div class="panel-hd"><span class="panel-title">最近交易</span><a class="link-btn" data-tab="transactions">全部 →</a></div>
+            <div class="panel-hd"><span class="panel-title">最近交易</span><a class="link-btn" data-tab="transactions">全部</a></div>
             <div id="dashRecent"></div>
           </div>
           <div class="panel">
-            <div class="panel-hd"><span class="panel-title">📅 報稅截止日</span><a class="link-btn" data-tab="calendar">完整行事曆 →</a></div>
+            <div class="panel-hd"><span class="panel-title">報稅截止日</span><a class="link-btn" data-tab="calendar">完整行事曆</a></div>
             <div id="dashTaxNext" class="tax-next" style="display:none"></div>
             <div id="dashDeadlines"></div>
           </div>

@@ -3954,19 +3954,19 @@ function renderDashboard() {
   const dot = q('korDot'), cap = q('korCaption'), lbl = q('korStatLabel');
   if (p >= 100) {
     dot.style.background='var(--red)'; dot.style.boxShadow='0 0 6px var(--red)';
-    cap.textContent='🚨 已超 KOR 上限！下一筆商業銷售需開始收 BTW——立刻跟我說，我們一起處理。'; lbl.textContent='🚨 超限';
+    cap.textContent='已超 KOR 上限。下一筆商業銷售需開始收 BTW——立刻跟我說，我們一起處理。'; lbl.textContent='超限';
   } else if (p >= 95) {
     dot.style.background='var(--red)'; dot.style.boxShadow='0 0 6px var(--red)';
-    cap.textContent='🔴 剩餘空間不足 '+eur(KOR_LIMIT-rev,0)+'，下一筆銷售極可能超限！'; lbl.textContent='🔴 極危險';
+    cap.textContent='剩餘空間不足 '+eur(KOR_LIMIT-rev,0)+'，下一筆銷售極可能超限。'; lbl.textContent='極危險';
   } else if (p >= 85) {
     dot.style.background='var(--orange)'; dot.style.boxShadow='0 0 6px var(--orange)';
-    cap.textContent='⚠️ 已達 '+pct(p)+'，請謹慎控制剩餘銷售節奏。'; lbl.textContent='🟠 警告';
+    cap.textContent='已達 '+pct(p)+'，請謹慎控制剩餘銷售節奏。'; lbl.textContent='警告';
   } else if (p >= 70) {
     dot.style.background='var(--gold)'; dot.style.boxShadow='0 0 6px var(--gold)';
-    cap.textContent='⚡ 已達 '+pct(p)+'，建議開始規劃下半年銷售步調。'; lbl.textContent='🟡 注意';
+    cap.textContent='已達 '+pct(p)+'，建議開始規劃下半年銷售步調。'; lbl.textContent='注意';
   } else {
     dot.style.background='var(--green)'; dot.style.boxShadow='0 0 6px var(--green)';
-    cap.textContent='✅ 目前安全，還有 '+eur(KOR_LIMIT-rev,0)+' 空間。'; lbl.textContent='✅ 正常';
+    cap.textContent='目前安全，還有 '+eur(KOR_LIMIT-rev,0)+' 空間。'; lbl.textContent='正常';
   }
 
   // Stats — commercial ledger only (private is not tax-reporting)
