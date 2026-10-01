@@ -1879,10 +1879,21 @@ input, select { font-family: var(--font); }
 .cm-trend { display: flex; flex-direction: column; gap: .12rem; margin-top: .28rem; min-width: 0; }
 .cm-trend-floor { margin-top: 0; }
 .cm-trend-k { font-size: .62rem; font-weight: 700; color: var(--t3); }
-.cm-spark { width: 100%; height: 28px; display: block; }
+.cm-spark-hit { display: block; cursor: crosshair; padding: 6px 0; margin: -6px 0; }
+.cm-spark { width: 100%; height: 28px; display: block; overflow: visible; }
 .cm-spark.sealed { color: var(--gold); }
 .cm-spark.raw { color: var(--blue); }
-.cm-spark path { vector-effect: non-scaling-stroke; }
+.cm-spark path, .cm-spark-cursor { vector-effect: non-scaling-stroke; }
+.cm-spark-cursor { fill: var(--ink); stroke: var(--paper); stroke-width: 1.4; }
+.cm-spark-tip {
+  position: fixed; z-index: 80; pointer-events: none;
+  background: var(--ink); color: var(--paper);
+  border-radius: 10px; padding: .32rem .55rem .4rem;
+  transform: translate(-50%, calc(-100% - 12px));
+  box-shadow: 0 12px 28px -16px rgba(28, 25, 22, .55);
+}
+.cm-spark-tip .k { font-size: .62rem; letter-spacing: .04em; color: rgba(250, 246, 239, .62); }
+.cm-spark-tip .v { font-family: var(--mono); font-size: .8rem; font-weight: 650; margin-top: .06rem; }
 .cm-delta { font-size: .66rem; font-weight: 700; font-family: var(--mono); line-height: 1.2; }
 .cm-delta-k { font-family: var(--font); font-weight: 700; color: var(--t3); margin-right: .2rem; }
 .cm-delta.up { color: var(--green); }

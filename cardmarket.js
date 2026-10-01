@@ -366,23 +366,32 @@ const CardmarketView = (() => {
     return { text: (cents > 0 ? '+' : '−') + eur(Math.abs(cents) / 100), cls: cents > 0 ? 'up' : 'down' };
   }
 
-  function sparkline(values, tone, title) {
+  function sparkPoints(history, field) {
+    return history.map(r => ({
+      date: r.date || '',
+      value: r[field],
+      text: r[field] == null ? '—' : eur(r[field]),
+    }));
+  }
+
+  function sparkline(points, tone) {
     const w = 120;
     const h = 28;
     const pad = 3;
-    const label = esc(title || '');
-    const nums = values.filter(v => v != null);
+    const list = Array.isArray(points) ? points : [];
+    const aria = esc(list.map(p => `${p.date} ${p.text}`).join(' · '));
+    const nums = list.map(p => p.value).filter(v => v != null);
     if (!nums.length) {
-      return `<svg class="cm-spark ${tone}" viewBox="0 0 ${w} ${h}" role="img"><title>${label}</title></svg>`;
+      return `<div class="cm-spark-hit"><svg class="cm-spark ${tone}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${aria}"></svg></div>`;
     }
     const min = Math.min(...nums);
     const max = Math.max(...nums);
     const span = (max - min) || 1;
-    const n = Math.max(values.length - 1, 1);
-    const xy = values.map((v, i) => {
-      if (v == null) return null;
+    const n = Math.max(list.length - 1, 1);
+    const xy = list.map((p, i) => {
+      if (p.value == null) return null;
       const x = pad + (i / n) * (w - pad * 2);
-      const y = pad + (1 - (v - min) / span) * (h - pad * 2);
+      const y = pad + (1 - (p.value - min) / span) * (h - pad * 2);
       return [x, y];
     });
     let d = '';
@@ -393,17 +402,77 @@ const CardmarketView = (() => {
     }
     const last = xy.reduce((acc, p) => p || acc, null);
     const dot = last ? `<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="2.1" fill="currentColor"/>` : '';
-    return `<svg class="cm-spark ${tone}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${label}"><title>${label}</title><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>${dot}</svg>`;
-  }
-
-  function seriesTitle(history, field) {
-    return history.map(r => `${r.date} ${r[field] == null ? '—' : eur(r[field])}`).join(' · ');
+    const stored = list.map((p, i) => {
+      const pt = xy[i];
+      if (!pt || p.value == null) return null;
+      return { date: p.date, text: p.text, x: Number(pt[0].toFixed(1)), y: Number(pt[1].toFixed(1)) };
+    }).filter(Boolean);
+    return `<div class="cm-spark-hit" data-points="${esc(JSON.stringify(stored))}"><svg class="cm-spark ${tone}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${aria}"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>${dot}<circle class="cm-spark-cursor" r="3.2" visibility="hidden"/></svg></div>`;
   }
 
   function trendBits(history, field, tone) {
     if (!history.some(r => r[field] != null)) return '';
     const d = deltaInfo(history, field);
-    return `<div class="cm-trend">${sparkline(history.map(r => r[field]), tone, seriesTitle(history, field))}<div class="cm-delta ${d.cls}"><span class="cm-delta-k">較前一日</span>${esc(d.text)}</div></div>`;
+    return `<div class="cm-trend">${sparkline(sparkPoints(history, field), tone)}<div class="cm-delta ${d.cls}"><span class="cm-delta-k">較前一日</span>${esc(d.text)}</div></div>`;
+  }
+
+  function ensureSparkTip() {
+    let tip = document.getElementById('cmSparkTip');
+    if (tip) return tip;
+    tip = document.createElement('div');
+    tip.id = 'cmSparkTip';
+    tip.className = 'cm-spark-tip';
+    tip.hidden = true;
+    document.body.appendChild(tip);
+    return tip;
+  }
+
+  function hideSparkCursor(root) {
+    root.querySelectorAll('.cm-spark-cursor').forEach(node => node.setAttribute('visibility', 'hidden'));
+  }
+
+  function bindSparks(root) {
+    if (!root || root.dataset.sparkBound === '1') return;
+    root.dataset.sparkBound = '1';
+    const tip = ensureSparkTip();
+    const hide = () => {
+      tip.hidden = true;
+      hideSparkCursor(root);
+    };
+    root.addEventListener('pointermove', (e) => {
+      const hit = e.target.closest && e.target.closest('.cm-spark-hit');
+      if (!hit || !root.contains(hit)) {
+        hide();
+        return;
+      }
+      const svg = hit.querySelector('svg');
+      const rect = svg ? svg.getBoundingClientRect() : null;
+      if (!svg || !rect || !rect.width) return;
+      let pts = [];
+      try { pts = JSON.parse(hit.getAttribute('data-points') || '[]'); } catch (err) { pts = []; }
+      const x = ((e.clientX - rect.left) / rect.width) * 120;
+      let best = null;
+      let dist = Infinity;
+      for (const p of pts) {
+        if (p == null || p.x == null) continue;
+        const d = Math.abs(p.x - x);
+        if (d < dist) { dist = d; best = p; }
+      }
+      hideSparkCursor(root);
+      if (!best) { tip.hidden = true; return; }
+      const cursor = svg.querySelector('.cm-spark-cursor');
+      if (cursor) {
+        cursor.setAttribute('cx', String(best.x));
+        cursor.setAttribute('cy', String(best.y));
+        cursor.setAttribute('visibility', 'visible');
+      }
+      tip.innerHTML = `<div class="k">${esc(best.date)}</div><div class="v">${esc(best.text)}</div>`;
+      tip.hidden = false;
+      const left = Math.min(window.innerWidth - 12, Math.max(12, e.clientX));
+      tip.style.left = left + 'px';
+      tip.style.top = e.clientY + 'px';
+    });
+    root.addEventListener('pointerleave', hide);
   }
 
   function historyRange(history) {
@@ -657,7 +726,11 @@ const CardmarketView = (() => {
     const priceBit = week.min == null ? '' : `<span class="cm-week-metric cm-week-span"><span class="cm-week-k">價格</span><b>${esc(week.min === week.max ? eur(week.min) : `${eur(week.min)} – ${eur(week.max)}`)}</b></span>`;
     const avgBit = week.avg == null ? '' : `<span class="cm-week-metric cm-week-avg"><span class="cm-week-k">均價</span><b>${esc(eur(week.avg))}</b></span>`;
     const topName = topSaleName(week, nameByKey);
-    const spark = sparkline(week.days.map(d => d.count), 'raw', week.days.map(d => `${d.date} ${d.count} 筆`).join(' · '));
+    const spark = sparkline(week.days.map(d => ({
+      date: d.date,
+      value: d.count,
+      text: `${d.count} 筆`,
+    })), 'raw');
     return `<div class="cm-week" aria-label="最近七日成交">
       <div class="cm-week-hd"><span class="cm-week-title">最近七日成交</span>${range ? `<span class="cm-week-dates">${esc(range)}</span>` : ''}</div>
       <div class="cm-week-metrics">
@@ -907,6 +980,7 @@ const CardmarketView = (() => {
     applyCustomOrder,
     mergeVisibleOrder,
     moveCardKey,
+    bindSparks,
   };
 })();
 

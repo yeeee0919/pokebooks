@@ -3751,6 +3751,7 @@ async function renderCardmarket(opts = {}) {
     order: readCmOrder(),
   });
   bindCmSortable();
+  CardmarketView.bindSparks(root);
   if (sel) {
     const inp = q('cmSearch');
     if (inp) {
