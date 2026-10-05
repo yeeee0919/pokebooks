@@ -267,13 +267,14 @@ function seriesLegendHtml(item, { showDelta = false, showTwd = false } = {}) {
       }
       const klass = changeClass(prev?.jpy, current.jpy);
       const ntd = showTwd ? toTwd(current.jpy, current) : null;
+      const stale = state.history.date && current.date < state.history.date;
       const pct =
         showDelta && prev?.jpy
           ? `<span class="delta ${klass}">${current.jpy === prev.jpy ? "0%" : `${current.jpy > prev.jpy ? "+" : ""}${(((current.jpy - prev.jpy) / prev.jpy) * 100).toFixed(1)}%`}</span>`
           : "";
-      return `<div class="series-chip">
+      return `<div class="series-chip ${stale ? "is-stale" : ""}">
         <span class="swatch" style="background:${source.color}"></span>
-        <span class="series-name">${escapeHtml(source.label)}</span>
+        <span class="series-name">${escapeHtml(source.label)}${stale ? `<span class="stale-tag">${escapeHtml(current.date.slice(5))} 停更</span>` : ""}</span>
         <span class="price">${yen.format(current.jpy)}</span>
         ${ntd == null ? "" : `<span class="price-twd">${twd.format(ntd)}</span>`}
         ${pct}
@@ -301,12 +302,17 @@ function compactPct(from, to) {
 function catalogPriceCell(item, source, best) {
   const { current, prev } = sourcePoint(item, source.id);
   if (!current) {
-    return `<div class="catalog-quote is-empty"><span class="price">—</span></div>`;
+    return `<div class="catalog-quote is-empty">
+      <span class="catalog-quote-label"><span class="swatch" style="background:${source.color}"></span>${escapeHtml(source.label)}</span>
+      <span class="price">—</span>
+    </div>`;
   }
   const klass = changeClass(prev?.jpy, current.jpy);
   const ntd = toTwd(current.jpy, current);
   const isBest = best != null && current.jpy === best;
-  return `<div class="catalog-quote ${isBest ? "is-best" : ""}">
+  const stale = state.history.date && current.date < state.history.date;
+  return `<div class="catalog-quote ${isBest ? "is-best" : ""} ${stale ? "is-stale" : ""}">
+    <span class="catalog-quote-label"><span class="swatch" style="background:${source.color}"></span>${escapeHtml(source.label)}${stale ? `<span class="stale-tag">${escapeHtml(current.date.slice(5))} 停更</span>` : ""}</span>
     <span class="price">${yen.format(current.jpy)}</span>
     ${ntd == null ? "" : `<span class="price-twd">${twd.format(ntd)}</span>`}
     <span class="delta ${klass}">${prev ? compactPct(prev.jpy, current.jpy) : ""}</span>
@@ -836,44 +842,36 @@ function renderCatalog() {
     );
   });
   const cols = activeSources();
-  const colTemplate = `40px minmax(240px, 1.8fr) ${cols.map(() => "minmax(132px, 1fr)").join(" ")} 108px`;
 
   return shell(`
     <div class="page-head">
       <div>
         <h2>全部商品</h2>
-        <p class="lede">點列開啟走勢 · 已追蹤 ${state.watchlist.length} 項</p>
+        <p class="lede">${items.length} 項 · 點卡片開啟走勢 · 已追蹤 ${state.watchlist.length} 項</p>
       </div>
       <div class="toolbar">
         ${sourceControls()}
         <input class="search" id="search" type="search" placeholder="搜尋英文或日文品名" value="${escapeHtml(state.search)}" />
       </div>
     </div>
-    <div class="catalog-list">
-      <div class="catalog-head" style="grid-template-columns:${colTemplate}">
-        <span></span>
-        <span class="catalog-label">商品</span>
-        ${cols
-          .map(
-            (source) =>
-              `<span class="catalog-label catalog-col"><span class="swatch" style="background:${source.color}"></span>${escapeHtml(source.label)}</span>`,
-          )
-          .join("")}
-        <span></span>
-      </div>
+    <div class="catalog-grid">
       ${items
         .map((item) => {
           const watched = isWatched(item.id);
           const best = cheapestJpy(item, cols);
-          return `<div class="catalog-row" style="grid-template-columns:${colTemplate}" data-open="${encodeURIComponent(item.id)}" tabindex="0" role="link">
-            ${imageHtml(item, "thumb catalog-thumb")}
-            <div class="catalog-product">
-              <strong>${escapeHtml(item.nameEn)}</strong>
-              <span class="muted">${escapeHtml(item.nameJa || "")}</span>
+          return `<article class="catalog-card" data-open="${encodeURIComponent(item.id)}" tabindex="0" role="link">
+            <div class="catalog-card-art">
+              ${imageHtml(item, "catalog-art")}
             </div>
-            ${cols.map((source) => catalogPriceCell(item, source, best)).join("")}
-            <button class="badge ${watched ? "on" : ""}" data-toggle="${encodeURIComponent(item.id)}">${watched ? "追蹤中" : "追蹤"}</button>
-          </div>`;
+            <div class="catalog-card-body">
+              <h3 class="catalog-card-title">${escapeHtml(item.nameEn)}</h3>
+              ${item.nameJa ? `<p class="catalog-card-sub">${escapeHtml(item.nameJa)}</p>` : ""}
+              <div class="catalog-card-quotes">
+                ${cols.map((source) => catalogPriceCell(item, source, best)).join("")}
+              </div>
+              <button class="badge ${watched ? "on" : ""}" data-toggle="${encodeURIComponent(item.id)}">${watched ? "追蹤中" : "追蹤"}</button>
+            </div>
+          </article>`;
         })
         .join("")}
     </div>
@@ -911,11 +909,11 @@ function renderItem() {
 }
 
 function bindCatalogKeys(root) {
-  root.querySelectorAll(".catalog-row[data-open]").forEach((row) => {
-    row.addEventListener("keydown", (e) => {
+  root.querySelectorAll(".catalog-card[data-open]").forEach((card) => {
+    card.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        navigate(`item/${row.dataset.open}`);
+        navigate(`item/${card.dataset.open}`);
       }
     });
   });
