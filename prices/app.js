@@ -939,18 +939,19 @@ function onClick(e) {
     navigate(name === "home" ? "" : name);
     return;
   }
-  const open = e.target.closest("[data-open]");
-  if (open) {
-    e.preventDefault();
-    navigate(`item/${open.dataset.open}`);
-    return;
-  }
+  // 追蹤按鈕在卡片內，必須先於 data-open，否則會誤進詳情頁
   const toggle = e.target.closest("[data-toggle]");
   if (toggle) {
     e.preventDefault();
     e.stopPropagation();
     toggleWatch(decodeURIComponent(toggle.dataset.toggle));
     render();
+    return;
+  }
+  const open = e.target.closest("[data-open]");
+  if (open) {
+    e.preventDefault();
+    navigate(`item/${open.dataset.open}`);
     return;
   }
   const source = e.target.closest("[data-source]");
