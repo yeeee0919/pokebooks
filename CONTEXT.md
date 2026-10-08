@@ -28,7 +28,9 @@ _Avoid_: treating private acquisition cost as commercial book value
 
 **Commercial inventory** — stock and P&L figures filtered to `scope === 'biz'`. Used for KOR reporting, the homepage dashboard KPIs, and the business P&L report. Private sales never appear here.
 
-**Private inventory** — the owner's collection view. Stock, product detail, and the private transactions tab include `scope === 'priv'` transactions, plus commercial SELL and GRADE as physical movement (售出／剩餘／明細／交易列表). Overlay does not create a second ledger row and does not change KOR. Private sales never change commercial quantity. Excluded from KOR and business P&L.
+**Private inventory** — the owner's collection view. Stock and product detail include `scope === 'priv'` transactions, plus commercial SELL and GRADE as physical movement (售出／剩餘／明細). Overlay does not create a second ledger row and does not change KOR. Private sales never change commercial quantity. Excluded from KOR and business P&L.
+
+**Private transactions table** — strict `scope === 'priv'` only. Commercial SELL/GRADE overlay is for inventory/detail, not this ledger list.
 
 ## Capture inbox
 

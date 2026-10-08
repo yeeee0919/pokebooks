@@ -4791,7 +4791,7 @@ function renderDetailTransactions(productId, scope) {
       }).join('')}</tbody>
     </table>
   </div>
-  <p class="field-hint">進貨選「商業」時可能同時建立商業＋私人各一筆（成本可不同）。銷售只記一邊：私人銷售不進商業庫存／KOR；商業銷售與送評會出現在私人庫存和交易（實體出庫），但不另寫一筆私人帳。</p>`;
+  <p class="field-hint">進貨選「商業」時可能同時建立商業＋私人各一筆（成本可不同）。銷售只記一邊：私人銷售不進商業庫存／KOR；商業銷售與送評會出現在私人庫存／商品明細（實體出庫），但不寫入私人交易表、也不另寫一筆私人帳。</p>`;
 
   el.querySelectorAll('.detail-tx-row').forEach(row => {
     row.addEventListener('click', () => editTransaction(row.dataset.id));
@@ -4857,7 +4857,9 @@ function renderTransactions() {
   const yr   = q('txYearFilter')?.value||String(fiscalYear());
   const type = q('txTypeFilter')?.value||'';
 
-  renderTxTableForScope('priv', Ledger.query({ scope: 'priv', view: 'inventory', year: yr, type: type || undefined }));
+  // Private tx table = strict priv ledger only (no commercial SELL/GRADE overlay).
+  // Collection overlay stays on inventory + product detail via view:'inventory'.
+  renderTxTableForScope('priv', Ledger.query({ scope: 'priv', year: yr, type: type || undefined }));
   renderTxTableForScope('biz',  Ledger.query({ scope: 'biz',  year: yr, type: type || undefined }));
 }
 
@@ -4893,7 +4895,7 @@ function renderTxTableForScope(scopeKey, rows) {
       return `<tr>
         <td class="col-check"><input type="checkbox" class="chk-tx" data-id="${t.id}"/></td>
         <td class="mono col-date" title="${t.date}">${t.date}</td>
-        <td class="col-type">${txBadge(t.type)}${scopeKey === 'priv' && r.scope === 'biz' ? ' <span class="type-badge">商業</span>' : ''}</td>
+        <td class="col-type">${txBadge(t.type)}</td>
         <td class="col-product"><span class="tx-product-name" title="${esc(r.productName)}">${esc(r.productName)}</span>${noteHtml}</td>
         <td class="mono col-qty">${t.quantity}</td>
         <td class="amount col-amt ${r.isSell?'sell':'buy'}">${r.isSell?'':'−'}${eur(r.total)}${r.isSell && BtwEngine.sellOutputBtw(t) ? `<div class="tx-btw-note">BTW ${eur(BtwEngine.sellOutputBtw(t))}</div>` : ''}</td>

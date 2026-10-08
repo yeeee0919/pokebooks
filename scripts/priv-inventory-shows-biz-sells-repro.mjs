@@ -1,9 +1,9 @@
 /**
- * Red-capable repro: private collection view = priv txs + commercial SELL/GRADE.
+ * Red-capable repro: private *inventory/detail* overlays commercial SELL/GRADE.
  *
  * Writes stay single-scope. Private remaining drops on commercial SELL/GRADE.
  * Personal profit for a commercial SELL uses private acquisition cost.
- * Private transactions tab uses the same overlay (view: 'inventory').
+ * Private *transactions table* is strict priv ledger only (no biz overlay).
  *
  * Run: node scripts/priv-inventory-shows-biz-sells-repro.mjs
  */
@@ -121,11 +121,11 @@ const bizDetailPrivSells = bizDetail.filter(t =>
   t.type === 'SELL' && ScopeLedger.normalizeScope(t, transactions) === 'priv'
 );
 
-const privTxTab = Ledger.query({ scope: 'priv', view: 'inventory', enrich: false });
+const privTxTab = Ledger.query({ scope: 'priv', enrich: false });
 const privTxTabSells = privTxTab.filter(t => t.type === 'SELL');
 const privTxTabGrades = privTxTab.filter(t => t.type === 'GRADE');
-const privTxTabBizBuys = privTxTab.filter(t =>
-  t.type === 'BUY' && ScopeLedger.normalizeScope(t, transactions) === 'biz'
+const privTxTabBiz = privTxTab.filter(t =>
+  ScopeLedger.normalizeScope(t, transactions) === 'biz'
 );
 
 const privLedgerOnly = Ledger.query({ productId: 'p1', scope: 'priv', enrich: false });
@@ -157,14 +157,14 @@ if (privDetailGrades.length !== 1) {
 if (bizDetailPrivSells.length !== 0) {
   failures.push(`biz inventory detail shows ${bizDetailPrivSells.length} private sell(s)`);
 }
-if (privTxTabSells.length !== 1) {
-  failures.push(`private tx tab sells=${privTxTabSells.length} want 1 (collection overlay)`);
+if (privTxTabSells.length !== 0) {
+  failures.push(`private tx tab sells=${privTxTabSells.length} want 0 (strict priv ledger)`);
 }
-if (privTxTabGrades.length !== 1) {
-  failures.push(`private tx tab grades=${privTxTabGrades.length} want 1`);
+if (privTxTabGrades.length !== 0) {
+  failures.push(`private tx tab grades=${privTxTabGrades.length} want 0 (strict priv ledger)`);
 }
-if (privTxTabBizBuys.length !== 0) {
-  failures.push(`private tx tab must not overlay commercial BUYs (got ${privTxTabBizBuys.length})`);
+if (privTxTabBiz.length !== 0) {
+  failures.push(`private tx tab must not include any commercial rows (got ${privTxTabBiz.length})`);
 }
 if (privLedgerSells.length !== 0) {
   failures.push(`strict priv query sells=${privLedgerSells.length} want 0 (write isolation)`);
@@ -199,8 +199,11 @@ if (!metricsBlock.includes('gradeOut') || !/gradeOut[\s\S]*matchesInventoryView/
 if (!detailBlock.includes("view: 'inventory'")) {
   failures.push("openDetail must query Ledger with view: 'inventory'");
 }
-if (!txBlock.includes("view: 'inventory'")) {
-  failures.push("renderTransactions private tab must query with view: 'inventory'");
+if (txBlock.includes("view: 'inventory'")) {
+  failures.push("renderTransactions private tab must NOT use view: 'inventory' (strict priv only)");
+}
+if (!/Ledger\.query\(\{\s*scope:\s*'priv'/.test(txBlock)) {
+  failures.push("renderTransactions must still query scope: 'priv' for the private table");
 }
 if (!/_sellScopeLock\s*=\s*inventoryPageScope\(\)\s*===\s*['"]biz['"]/.test(sellBlock)
   && !/_sellScopeLock\s*=\s*.*===\s*['"]biz['"]\s*\?/.test(sellBlock)) {

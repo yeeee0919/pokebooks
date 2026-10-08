@@ -60,10 +60,11 @@ const ScopeLedger = (() => {
   }
 
   /**
-   * Personal collection visibility (inventory + private transactions tab).
+   * Personal collection visibility (inventory stock + product detail).
    * Write path stays single-scope. Private view overlays commercial SELL and
    * GRADE (physical movement) but not commercial BUYs — those already have a
-   * paired private row. Commercial view never includes private transactions.
+   * paired private row. The private transactions *table* uses filterByScope
+   * (strict priv) instead. Commercial view never includes private transactions.
    */
   function matchesInventoryView(tx, viewScope, transactions) {
     if (!viewScope || viewScope === 'all') return true;
